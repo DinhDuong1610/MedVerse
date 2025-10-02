@@ -11,12 +11,15 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import com.medverse.backend.utils.enumeration.UserStatus;
+
 import java.util.Collection;
 import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
@@ -32,20 +35,27 @@ public class User extends AuditableEntity implements UserDetails {
     @Column(name = "password", nullable = false)
     private String password;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-    private String status;
+    private UserStatus status;
 
     @Column(name = "last_login_at")
     private OffsetDateTime lastLoginAt;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
-    private Set<Role> roles = new HashSet<>();
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, optional = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private UserProfile userProfile;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Set<UserRole> userRoles = new HashSet<>();
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return this.roles.stream()
-                .map(role -> new SimpleGrantedAuthority(role.getCode()))
+        return this.userRoles.stream()
+                .map(userRole -> new SimpleGrantedAuthority(userRole.getRole().getCode().toString()))
                 .collect(Collectors.toList());
     }
 
@@ -71,6 +81,6 @@ public class User extends AuditableEntity implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return this.status == UserStatus.ACTIVE;
     }
 }
