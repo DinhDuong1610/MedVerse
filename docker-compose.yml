@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Service cho ứng dụng Spring Boot
+  app:
+    build: .
+    container_name: medverse_backend_app
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: medverse_postgres_db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: medverse_redis_cache
+    ports:
+      - "${REDIS_PORT}:6379"
+
+volumes:
+  pgdata: {}

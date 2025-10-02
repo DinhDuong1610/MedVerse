@@ -1,0 +1,10 @@
+.env
+
+*.log
+
+/medverse-backend/target/
+.gradle
+
+.idea/
+*.iml
+.vscode/
