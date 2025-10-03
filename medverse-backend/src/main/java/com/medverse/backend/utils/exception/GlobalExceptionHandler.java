@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -46,6 +47,15 @@ public class GlobalExceptionHandler {
             WebRequest request) {
         ApiResponse<Object> response = new ApiResponse<>("ERROR", "Token refresh failed. Please log in again.",
                 ex.getMessage(), null);
+        return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Object>> handleAuthenticationException(AuthenticationException ex,
+            WebRequest request) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        ApiResponse<Object> response = new ApiResponse<>("ERROR", "Authentication Failed: " + ex.getMessage(), null,
+                null);
         return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
     }
 
