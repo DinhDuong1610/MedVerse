@@ -1,7 +1,7 @@
 package com.medverse.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.medverse.backend.payload.ApiResponse;
+import com.medverse.backend.payload.AppResponse;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,7 +27,7 @@ public class CustomAuthEntryPoint implements AuthenticationEntryPoint {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
-        ApiResponse<Object> body = new ApiResponse<>("ERROR", "Authentication Failed: " + authException.getMessage(),
+        AppResponse<Object> body = new AppResponse<>("ERROR", "Authentication Failed: " + authException.getMessage(),
                 null, null);
 
         final ObjectMapper mapper = new ObjectMapper();

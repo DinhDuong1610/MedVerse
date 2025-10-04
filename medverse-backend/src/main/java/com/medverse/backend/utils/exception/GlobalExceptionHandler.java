@@ -1,6 +1,6 @@
 package com.medverse.backend.utils.exception;
 
-import com.medverse.backend.payload.ApiResponse;
+import com.medverse.backend.payload.AppResponse;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,51 +19,51 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
+    public ResponseEntity<AppResponse<Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getFieldErrors()
                 .forEach(error -> errors.put(error.getField(), error.getDefaultMessage()));
 
-        ApiResponse<Object> response = new ApiResponse<>("ERROR", "Invalid input data.", errors, null);
+        AppResponse<Object> response = new AppResponse<>("ERROR", "Invalid input data.", errors, null);
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiResponse<Object>> handleResourceNotFoundException(ResourceNotFoundException ex,
+    public ResponseEntity<AppResponse<Object>> handleResourceNotFoundException(ResourceNotFoundException ex,
             WebRequest request) {
-        ApiResponse<Object> response = new ApiResponse<>("ERROR", ex.getMessage(), null, null);
+        AppResponse<Object> response = new AppResponse<>("ERROR", ex.getMessage(), null, null);
         return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
     }
 
     @ExceptionHandler(DuplicateResourceException.class)
-    public ResponseEntity<ApiResponse<Object>> handleDuplicateResourceException(DuplicateResourceException ex,
+    public ResponseEntity<AppResponse<Object>> handleDuplicateResourceException(DuplicateResourceException ex,
             WebRequest request) {
-        ApiResponse<Object> response = new ApiResponse<>("ERROR", ex.getMessage(), null, null);
+        AppResponse<Object> response = new AppResponse<>("ERROR", ex.getMessage(), null, null);
         return new ResponseEntity<>(response, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(TokenRefreshException.class)
-    public ResponseEntity<ApiResponse<Object>> handleTokenRefreshException(TokenRefreshException ex,
+    public ResponseEntity<AppResponse<Object>> handleTokenRefreshException(TokenRefreshException ex,
             WebRequest request) {
-        ApiResponse<Object> response = new ApiResponse<>("ERROR", "Token refresh failed. Please log in again.",
+        AppResponse<Object> response = new AppResponse<>("ERROR", "Token refresh failed. Please log in again.",
                 ex.getMessage(), null);
         return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
     }
 
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ApiResponse<Object>> handleAuthenticationException(AuthenticationException ex,
+    public ResponseEntity<AppResponse<Object>> handleAuthenticationException(AuthenticationException ex,
             WebRequest request) {
         log.warn("Authentication failed: {}", ex.getMessage());
-        ApiResponse<Object> response = new ApiResponse<>("ERROR", "Authentication Failed: " + ex.getMessage(), null,
+        AppResponse<Object> response = new AppResponse<>("ERROR", "Authentication Failed: " + ex.getMessage(), null,
                 null);
         return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<String>> handleUncaughtException(Exception ex, WebRequest request) {
+    public ResponseEntity<AppResponse<String>> handleUncaughtException(Exception ex, WebRequest request) {
         log.error("Unhandled exception occurred: {}", ex.getMessage(), ex);
 
-        ApiResponse<String> response = new ApiResponse<>("ERROR",
+        AppResponse<String> response = new AppResponse<>("ERROR",
                 "An unexpected server error occurred. Please try again later.", null, null);
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
