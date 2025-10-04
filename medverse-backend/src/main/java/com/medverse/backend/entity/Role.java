@@ -36,4 +36,10 @@ public class Role extends AuditableEntity {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private Set<UserRole> userRoles = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "role_permissions", joinColumns = @JoinColumn(name = "role_id"), inverseJoinColumns = @JoinColumn(name = "permission_id"))
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Set<Permission> permissions = new HashSet<>();
 }
