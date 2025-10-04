@@ -1,11 +1,12 @@
 CREATE TABLE permissions (
     id UUID PRIMARY KEY,
-    code VARCHAR(100) NOT NULL UNIQUE,
+    code VARCHAR(100) NOT NULL UNIQUE, 
     description VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by UUID,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_by UUID
+    updated_by UUID,
+    deleted_at TIMESTAMPTZ 
 );
 
 CREATE TABLE role_permissions (
@@ -40,3 +41,4 @@ WHERE r.code = 'RECEPTIONIST' AND p.code IN ('APPOINTMENT:READ_ANY', 'APPOINTMEN
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r, permissions p WHERE r.code = 'ADMIN';
+
