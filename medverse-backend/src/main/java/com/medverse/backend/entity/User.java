@@ -15,6 +15,7 @@ import com.medverse.backend.utils.enumeration.UserStatus;
 
 import java.util.Collection;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Entity
 @Table(name = "users")
@@ -54,8 +55,17 @@ public class User extends AuditableEntity implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return this.userRoles.stream()
-                .map(userRole -> new SimpleGrantedAuthority(userRole.getRole().getCode().toString()))
+        Stream<String> permissionStream = this.userRoles.stream()
+                .map(UserRole::getRole)
+                .flatMap(role -> role.getPermissions().stream())
+                .map(Permission::getCode);
+
+        Stream<String> roleStream = this.userRoles.stream()
+                .map(userRole -> "ROLE_" + userRole.getRole().getCode().toString());
+
+        return Stream.concat(permissionStream, roleStream)
+                .distinct()
+                .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
     }
 
