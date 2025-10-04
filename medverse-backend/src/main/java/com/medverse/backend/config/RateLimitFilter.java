@@ -1,7 +1,7 @@
 package com.medverse.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.medverse.backend.payload.ApiResponse;
+import com.medverse.backend.payload.AppResponse;
 import com.medverse.backend.service.RateLimitService;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
@@ -53,7 +53,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.addHeader("X-Rate-Limit-Retry-After-Seconds", String.valueOf(waitForRefill));
 
-            ApiResponse<Object> body = new ApiResponse<>("ERROR", "You have exhausted your API request quota", null,
+            AppResponse<Object> body = new AppResponse<>("ERROR", "You have exhausted your API request quota", null,
                     null);
             response.getWriter().write(objectMapper.writeValueAsString(body));
         }
