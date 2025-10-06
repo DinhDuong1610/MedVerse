@@ -7,7 +7,8 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-import com.medverse.backend.utils.enumeration.RoleCode;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.Where;
 
 @Entity
 @Table(name = "roles")
@@ -16,15 +17,16 @@ import com.medverse.backend.utils.enumeration.RoleCode;
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
+@SQLDelete(sql = "UPDATE roles SET deleted_at = NOW() WHERE id = ?")
+@Where(clause = "deleted_at IS NULL")
 public class Role extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "code", nullable = false, unique = true, length = 50)
-    private RoleCode code;
+    private String code;
 
     @Column(name = "name", nullable = false, length = 100)
     private String name;

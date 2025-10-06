@@ -44,7 +44,7 @@ public class DataInitializer implements ApplicationRunner {
 
         log.info("Default admin user not found. Creating a new one...");
 
-        Role adminRole = roleRepository.findByCode(RoleCode.ADMIN)
+        Role adminRole = roleRepository.findByCode(RoleCode.ADMIN.toString())
                 .orElseThrow(
                         () -> new IllegalStateException("ADMIN role not found in database. Please run migrations."));
 
