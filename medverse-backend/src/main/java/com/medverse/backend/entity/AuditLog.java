@@ -7,6 +7,7 @@ import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -23,10 +24,6 @@ public class AuditLog {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-
-    @CreatedDate
-    @Column(name = "occurred_at", nullable = false, updatable = false)
-    private OffsetDateTime occurredAt;
 
     @Column(name = "actor_id")
     private UUID actorId;
@@ -45,6 +42,10 @@ public class AuditLog {
 
     @Column(name = "result", nullable = false)
     private String result;
+
+    @CreatedDate
+    @Column(name = "occurred_at", nullable = false, updatable = false)
+    private LocalDateTime occurredAt;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

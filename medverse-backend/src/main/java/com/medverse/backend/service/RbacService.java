@@ -3,6 +3,7 @@ package com.medverse.backend.service;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -10,6 +11,8 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medverse.backend.entity.Permission;
 import com.medverse.backend.entity.Role;
 import com.medverse.backend.payload.rbac.PermissionDto;
@@ -28,10 +31,12 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
+@Transactional
 public class RbacService {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final AuditService auditService;
+    private final ObjectMapper objectMapper;
 
     public List<PermissionDto> findAllPermissions() {
         log.info("Fetching all available permissions");
@@ -69,6 +74,10 @@ public class RbacService {
 
         Role savedRole = roleRepository.save(newRole);
         log.info("ADMIN ACTION: New role '{}' created with code '{}'", savedRole.getName(), savedRole.getCode());
+
+        auditService.record("CREATE_ROLE", "ROLE", savedRole.getId().toString(),
+                toJsonDetails("code", savedRole.getCode(), "name", savedRole.getName()));
+
         return mapToRoleDto(savedRole);
     }
 
@@ -90,6 +99,9 @@ public class RbacService {
         Role updatedRole = roleRepository.save(role);
         log.info("ADMIN ACTION: Updated permissions for role '{}'. It now has {} permissions.", updatedRole.getName(),
                 updatedRole.getPermissions().size());
+
+        auditService.record("UPDATE_ROLE_PERMISSIONS", "ROLE", updatedRole.getId().toString(),
+                toJsonDetails("assigned_permissions", request.getPermissionCodes()));
 
         return mapToRoleDto(updatedRole);
     }
@@ -119,6 +131,9 @@ public class RbacService {
 
         roleRepository.delete(role);
         log.warn("ADMIN ACTION: Role '{}' with code '{}' has been soft-deleted.", role.getName(), role.getCode());
+
+        auditService.record("DELETE_ROLE", "ROLE", role.getId().toString(),
+                toJsonDetails("code", role.getCode(), "name", role.getName()));
     }
 
     private RoleDto mapToRoleDto(Role role) {
@@ -140,4 +155,21 @@ public class RbacService {
                 .description(permission.getDescription())
                 .build();
     }
+
+    private String toJsonDetails(Object... keyValuePairs) {
+        if (keyValuePairs.length % 2 != 0) {
+            return "{\"error\":\"Invalid key-value pairs\"}";
+        }
+        try {
+            Map<String, Object> map = new java.util.HashMap<>();
+            for (int i = 0; i < keyValuePairs.length; i += 2) {
+                map.put((String) keyValuePairs[i], keyValuePairs[i + 1]);
+            }
+            return objectMapper.writeValueAsString(map);
+        } catch (JsonProcessingException e) {
+            log.error("Error creating JSON for audit details", e);
+            return "{\"error\":\"Failed to serialize details\"}";
+        }
+    }
+
 }
