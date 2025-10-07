@@ -1,9 +1,9 @@
 package com.medverse.backend.repository;
 
 import com.medverse.backend.entity.Role;
-import com.medverse.backend.utils.enumeration.RoleCode;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -11,5 +11,8 @@ import java.util.UUID;
 
 @Repository
 public interface RoleRepository extends JpaRepository<Role, UUID> {
-    Optional<Role> findByCode(RoleCode code);
+    Optional<Role> findByCode(String code);
+
+    @Query("SELECT COUNT(ur) > 0 FROM UserRole ur WHERE ur.role.id = :roleId")
+    boolean isRoleAssignedToUsers(UUID roleId);
 }

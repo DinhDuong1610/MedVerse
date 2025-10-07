@@ -63,7 +63,7 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setStatus(UserStatus.PENDING_ACTIVATION);
 
-        Role patientRole = roleRepository.findByCode(RoleCode.PATIENT)
+        Role patientRole = roleRepository.findByCode(RoleCode.PATIENT.toString())
                 .orElseThrow(() -> new ResourceNotFoundException("Role", "code", "PATIENT"));
         UserRole userRole = new UserRole(user, patientRole);
 
