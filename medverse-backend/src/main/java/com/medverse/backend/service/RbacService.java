@@ -2,6 +2,7 @@ package com.medverse.backend.service;
 
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -89,8 +90,9 @@ public class RbacService {
         Set<Permission> foundPermissions = permissionRepository.findByCodeIn(request.getPermissionCodes());
 
         if (foundPermissions.size() != request.getPermissionCodes().size()) {
+            Set<String> invalidCodes = new HashSet<>(request.getPermissionCodes());
             Set<String> foundCodes = foundPermissions.stream().map(Permission::getCode).collect(Collectors.toSet());
-            request.getPermissionCodes().removeAll(foundCodes);
+            invalidCodes.removeAll(foundCodes);
             throw new ResourceNotFoundException("Permissions not found with codes", "codes",
                     request.getPermissionCodes().toString());
         }
