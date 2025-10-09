@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -57,6 +58,16 @@ public class GlobalExceptionHandler {
         AppResponse<Object> response = new AppResponse<>("ERROR", "Authentication Failed: " + ex.getMessage(), null,
                 null);
         return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<AppResponse<Object>> handleAccessDeniedException(AccessDeniedException ex,
+            WebRequest request) {
+        log.warn("Access Denied: User attempted to access a protected resource without required permissions. {}",
+                ex.getMessage());
+        AppResponse<Object> response = new AppResponse<>("ERROR",
+                "Access Denied: You do not have the required permissions to perform this action.", null, null);
+        return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
     }
 
     @ExceptionHandler(Exception.class)

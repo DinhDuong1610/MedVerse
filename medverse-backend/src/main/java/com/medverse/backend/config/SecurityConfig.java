@@ -22,6 +22,13 @@ public class SecurityConfig {
         private final CustomAuthEntryPoint customAuthEntryPoint;
         private final RateLimitFilter rateLimitFilter;
 
+        private static final String[] WHITE_LIST_URL = {
+                        "/auth/**",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html"
+        };
+
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
                 http
@@ -30,7 +37,7 @@ public class SecurityConfig {
                                 .exceptionHandling(exception -> exception
                                                 .authenticationEntryPoint(customAuthEntryPoint))
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/auth/**", "/swagger-ui/**", "/v3/api-docs/**")
+                                                .requestMatchers(WHITE_LIST_URL)
                                                 .permitAll()
                                                 .anyRequest().authenticated())
                                 .sessionManagement(session -> session
