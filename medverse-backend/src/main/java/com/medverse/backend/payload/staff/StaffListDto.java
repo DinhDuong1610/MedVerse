@@ -4,7 +4,7 @@ import com.medverse.backend.utils.enumeration.UserStatus;
 import lombok.Builder;
 import lombok.Data;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
 
@@ -16,5 +16,5 @@ public class StaffListDto {
     private String fullName;
     private UserStatus status;
     private Set<String> roles;
-    private OffsetDateTime createdAt;
+    private LocalDateTime createdAt;
 }
