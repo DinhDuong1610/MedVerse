@@ -12,4 +12,6 @@ import java.util.UUID;
 @Repository
 public interface ReceptionistProfileRepository extends JpaRepository<ReceptionistProfile, UUID> {
     Optional<ReceptionistProfile> findByUser(User user);
+
+    Optional<ReceptionistProfile> findByUserId(UUID userId);
 }

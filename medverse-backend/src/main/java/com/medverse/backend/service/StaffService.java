@@ -67,14 +67,27 @@ public class StaffService {
 
     @Transactional(readOnly = true)
     public StaffDetailDto findStaffById(UUID userId) {
-        log.info("Fetching details for staff member with ID: {}", userId);
+        log.info("Fetching staff details for user ID: {}", userId);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
-        Optional<DoctorProfile> docProfile = doctorProfileRepository.findByUser(user);
-        Optional<ReceptionistProfile> recepProfile = receptionistProfileRepository.findByUser(user);
+        boolean isPatient = user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole().getCode().equals(RoleCode.PATIENT.name()));
+        if (isPatient) {
+            log.warn("Attempted to fetch details for a PATIENT user via staff API: {}", userId);
+            throw new ResourceNotFoundException("Staff User", "id", userId); // Coi như không tìm thấy nhân viên
+        }
 
-        return StaffDetailDto.from(user, docProfile.orElse(null), recepProfile.orElse(null));
+        DoctorProfile docProfile = null;
+        ReceptionistProfile recepProfile = null;
+        if (user.getUserRoles().stream().anyMatch(ur -> ur.getRole().getCode().equals(RoleCode.DOCTOR.name()))) {
+            docProfile = doctorProfileRepository.findByUserId(userId).orElse(null);
+        }
+        if (user.getUserRoles().stream().anyMatch(ur -> ur.getRole().getCode().equals(RoleCode.RECEPTIONIST.name()))) {
+            recepProfile = receptionistProfileRepository.findByUserId(userId).orElse(null);
+        }
+
+        return StaffDetailDto.from(user, docProfile, recepProfile);
     }
 
     @Transactional
@@ -186,17 +199,11 @@ public class StaffService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getName().equals(user.getEmail())) {
-            throw new IllegalArgumentException("Cannot deactivate your own account.");
-        }
-
-        if (user.hasRole(RoleCode.ADMIN)) {
-            List<String> adminRoleCode = List.of(RoleCode.ADMIN.name());
-            Page<User> admins = userRepository.findUsersByRoleCodes(adminRoleCode, Pageable.unpaged());
-            if (admins.getTotalElements() <= 1) {
-                throw new IllegalArgumentException("Cannot delete the last administrator account.");
-            }
+        boolean isPatient = user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole().getCode().equals(RoleCode.PATIENT.name()));
+        if (isPatient) {
+            log.error("Attempted to deactivate a PATIENT user via staff API: {}", userId);
+            throw new IllegalArgumentException("Cannot deactivate a patient account using this operation.");
         }
 
         userRepository.delete(user);
@@ -266,5 +273,4 @@ public class StaffService {
             return "{\"error\":\"Serialization failed\"}";
         }
     }
-
 }
