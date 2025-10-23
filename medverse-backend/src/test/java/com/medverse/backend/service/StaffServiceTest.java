@@ -93,7 +93,6 @@ class StaffServiceTest {
     }
 
     @Test
-    @DisplayName("findAllSpecialties: (Thành công) - Nên trả về danh sách các chuyên khoa DTO")
     void findAllSpecialties_Success_ShouldReturnListOfSpecialtyDtos() {
         Specialty specialty1 = new Specialty(UUID.randomUUID(), "CARDIO", "Tim mạch", "Chuyên khoa tim mạch",
                 OffsetDateTime.now(), OffsetDateTime.now(), null);
@@ -112,7 +111,6 @@ class StaffServiceTest {
     }
 
     @Test
-    @DisplayName("findAllStaff: (Thành công) - Nên trả về một trang (Page) các nhân viên DTO")
     void findAllStaff_Success_ShouldReturnPageOfStaffListDtos() {
         Role doctorRole = new Role(UUID.randomUUID(), "DOCTOR", "Doctor", null, new HashSet<>(), new HashSet<>());
         Role adminRole = new Role(UUID.randomUUID(), "ADMIN", "Admin", null, new HashSet<>(), new HashSet<>());
@@ -160,7 +158,6 @@ class StaffServiceTest {
     }
 
     @Nested
-    @DisplayName("Tests for createStaff()")
     class CreateStaffTests {
         private StaffCreateRequest baseRequest;
         private Role doctorRole;
@@ -211,7 +208,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thành công) - Nên tạo DOCTOR mới với đầy đủ thông tin")
         void createStaff_Success_ForDoctor() throws JsonProcessingException {
             baseRequest.setRole(RoleCode.DOCTOR);
             DoctorProfileRequest docProfileRequest = new DoctorProfileRequest();
@@ -254,7 +250,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thành công) - Nên tạo RECEPTIONIST mới với đầy đủ thông tin")
         void createStaff_Success_ForReceptionist() {
             baseRequest.setRole(RoleCode.RECEPTIONIST);
             ReceptionistProfileRequest recepProfileRequest = new ReceptionistProfileRequest();
@@ -283,7 +278,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi email đã tồn tại")
         void createStaff_FailsWhenEmailExists() {
             when(userRepository.findByEmail(baseRequest.getEmail())).thenReturn(Optional.of(new User()));
             baseRequest.setRole(RoleCode.DOCTOR);
@@ -299,7 +293,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi cố gắng tạo vai trò PATIENT")
         void createStaff_FailsForPatientRole() {
             baseRequest.setRole(RoleCode.PATIENT);
 
@@ -311,7 +304,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi tạo DOCTOR nhưng thiếu DoctorProfile")
         void createStaff_FailsWhenDoctorProfileMissing() {
             baseRequest.setRole(RoleCode.DOCTOR);
             baseRequest.setDoctorProfile(null);
@@ -324,7 +316,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi SpecialtyId không hợp lệ")
         void createStaff_FailsWhenSpecialtyNotFound() {
             baseRequest.setRole(RoleCode.DOCTOR);
             DoctorProfileRequest docProfileRequest = new DoctorProfileRequest();
@@ -345,10 +336,8 @@ class StaffServiceTest {
     }
 
     @Nested
-    @DisplayName("Tests for findStaffById()")
     class FindStaffByIdTests {
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi UserId không tồn tại")
         void findStaffById_FailsWhenUserNotFound() {
             UUID nonExistentUserId = UUID.randomUUID();
             when(userRepository.findById(nonExistentUserId)).thenReturn(Optional.empty());
@@ -359,7 +348,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi User tìm thấy là PATIENT")
         void findStaffById_FailsWhenUserIsPatient() {
             UUID patientUserId = UUID.randomUUID();
             Role patientRole = new Role(UUID.randomUUID(), "PATIENT", "Patient", null, new HashSet<>(),
@@ -382,7 +370,6 @@ class StaffServiceTest {
     }
 
     @Nested
-    @DisplayName("Tests for updateStaff()")
     class UpdateStaffTests {
 
         private UUID staffUserId;
@@ -436,7 +423,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi UserId không tồn tại")
         void updateStaff_FailsWhenUserNotFound() {
             when(userRepository.findById(staffUserId)).thenReturn(Optional.empty());
 
@@ -449,7 +435,6 @@ class StaffServiceTest {
     }
 
     @Nested
-    @DisplayName("Tests for deactivateStaff()")
     class DeactivateStaffTests {
 
         private UUID staffUserId;
@@ -475,7 +460,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thành công) - Nên gọi delete (soft delete) cho User hợp lệ")
         void deactivateStaff_Success_ShouldSoftDeleteUser() {
             staffService.deactivateStaff(staffUserId);
             verify(userRepository, times(1)).delete(deletedUserCaptor.capture());
@@ -486,7 +470,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi UserId không tồn tại")
         void deactivateStaff_FailsWhenUserNotFound() {
             when(userRepository.findById(staffUserId)).thenReturn(Optional.empty());
 
@@ -498,7 +481,6 @@ class StaffServiceTest {
         }
 
         @Test
-        @DisplayName("(Thất bại) - Nên ném ra lỗi khi cố gắng hủy kích hoạt PATIENT")
         void deactivateStaff_FailsForPatient() {
             Role patientRole = new Role(UUID.randomUUID(), "PATIENT", "Patient", null, new HashSet<>(),
                     new HashSet<>());
