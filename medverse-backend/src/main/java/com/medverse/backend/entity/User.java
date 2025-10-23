@@ -7,10 +7,14 @@ import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.Where;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import com.medverse.backend.utils.enumeration.RoleCode;
 import com.medverse.backend.utils.enumeration.UserStatus;
 
 import java.util.Collection;
@@ -24,6 +28,8 @@ import java.util.stream.Stream;
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
+@SQLDelete(sql = "UPDATE users SET deleted_at = NOW(), status = 'DISABLED' WHERE id = ?")
+@Where(clause = "deleted_at IS NULL")
 public class User extends AuditableEntity implements UserDetails {
 
     @Id
@@ -92,5 +98,9 @@ public class User extends AuditableEntity implements UserDetails {
     @Override
     public boolean isEnabled() {
         return this.status == UserStatus.ACTIVE;
+    }
+
+    public boolean hasRole(RoleCode roleCode) {
+        return this.userRoles.stream().anyMatch(userRole -> userRole.getRole().getCode().equals(roleCode.toString()));
     }
 }
