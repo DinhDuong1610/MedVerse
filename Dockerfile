@@ -4,7 +4,7 @@ COPY medverse-backend/pom.xml .
 COPY medverse-backend/src ./src
 RUN mvn clean install -DskipTests
 
-FROM openjdk:17-slim
+FROM openjdk:17.0.1-jdk-slim
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080

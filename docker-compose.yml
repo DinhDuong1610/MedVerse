@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Service cho ứng dụng Spring Boot
   app:
     build: .
     container_name: medverse_backend_app
@@ -41,6 +40,22 @@ services:
     container_name: medverse_redis_cache
     ports:
       - "${REDIS_PORT}:6379"
+
+  frontend:
+    build:
+      context: ./medverse-frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./medverse-frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://app:8080
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - app
 
 volumes:
   pgdata: {}
