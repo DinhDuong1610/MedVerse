@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -72,5 +73,26 @@ public class InventoryController {
         inventoryService.importStock(request);
         return ResponseEntity.ok(
                 new AppResponse<>("SUCCESS", "Stock imported successfully.", null, null));
+    }
+
+    @GetMapping("/medications/atc/{atcCode}")
+    @PreAuthorize("hasAuthority('INVENTORY:READ')")
+    @Operation(summary = "Get medication by ATC code", description = "Get details of the first medication found with the given ATC code. Useful for AI integration.")
+    public ResponseEntity<AppResponse<MedicationDto>> getMedicationByAtcCode(@PathVariable String atcCode) {
+
+        MedicationDto medication = inventoryService.getMedicationByAtcCode(atcCode);
+        return ResponseEntity.ok(
+                new AppResponse<>("SUCCESS", "Medication details retrieved successfully.", medication, null));
+    }
+
+    @GetMapping("/medications/smart-search")
+    @PreAuthorize("hasAuthority('INVENTORY:READ')")
+    @Operation(summary = "Smart search by ATC and Unit", description = "Find medications matching ATC code and specific dosage/unit from AI.")
+    public ResponseEntity<AppResponse<List<MedicationDto>>> smartSearch(
+            @RequestParam String atcCode,
+            @RequestParam String unitStr) {
+
+        List<MedicationDto> results = inventoryService.findSmartMedications(atcCode, unitStr);
+        return ResponseEntity.ok(new AppResponse<>("SUCCESS", "Smart search results.", results, null));
     }
 }

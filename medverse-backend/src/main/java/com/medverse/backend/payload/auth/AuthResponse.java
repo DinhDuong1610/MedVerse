@@ -1,5 +1,7 @@
 package com.medverse.backend.payload.auth;
 
+import java.util.UUID;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -15,4 +17,8 @@ public class AuthResponse {
 
     @Schema(description = "JWT Refresh Token (long-lived)")
     private String refreshToken;
+
+    private UUID userId;
+    private String fullName;
+    private String role;
 }

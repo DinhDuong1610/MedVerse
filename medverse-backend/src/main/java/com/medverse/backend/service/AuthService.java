@@ -121,10 +121,17 @@ public class AuthService {
             throw new IllegalStateException("Account is not active. Please verify your email first.");
         }
 
+        String role = user.getUserRoles().stream()
+                .findFirst()
+                .map(ur -> ur.getRole().getCode().toString())
+                .orElse("PATIENT");
+
         var accessToken = jwtService.generateAccessToken(user);
         var refreshToken = createAndSaveRefreshToken(user);
 
-        return new AuthResponse(accessToken, refreshToken.getToken());
+        return new AuthResponse(accessToken, refreshToken.getToken(), user.getId(),
+                user.getUserProfile().getFullName(),
+                role);
     }
 
     @Transactional
@@ -136,7 +143,12 @@ public class AuthService {
                 .map(RefreshToken::getUser)
                 .map(user -> {
                     String newAccessToken = jwtService.generateAccessToken(user);
-                    return new AuthResponse(newAccessToken, requestRefreshToken);
+                    return new AuthResponse(newAccessToken, requestRefreshToken, user.getId(),
+                            user.getUserProfile().getFullName(),
+                            user.getUserRoles().stream()
+                                    .findFirst()
+                                    .map(ur -> ur.getRole().getCode().toString())
+                                    .orElse("PATIENT"));
                 }).orElseThrow(
                         () -> new TokenRefreshException(requestRefreshToken, "Refresh token not found in database!"));
     }

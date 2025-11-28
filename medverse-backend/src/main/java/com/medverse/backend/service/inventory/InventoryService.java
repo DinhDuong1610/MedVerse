@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -69,6 +70,15 @@ public class InventoryService {
     public MedicationDto getMedicationById(UUID id) {
         Medication med = medicationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Medication", "id", id));
+        MedicationDto dto = inventoryMapper.toDto(med);
+        dto.setTotalStock(batchRepository.sumAvailableQuantity(med.getId(), LocalDate.now()));
+        return dto;
+    }
+
+    public MedicationDto getMedicationByAtcCode(String atcCode) {
+        Medication med = medicationRepository.findFirstByAtcCode(atcCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Medication", "atcCode", atcCode));
+
         MedicationDto dto = inventoryMapper.toDto(med);
         dto.setTotalStock(batchRepository.sumAvailableQuantity(med.getId(), LocalDate.now()));
         return dto;
@@ -123,5 +133,41 @@ public class InventoryService {
         // auditService.record("IMPORT_STOCK", "MEDICATION_BATCH",
         // savedBatch.getId().toString(),
         // "Imported " + request.getQuantity() + " items of " + medication.getName());
+    }
+
+    public List<MedicationDto> findSmartMedications(String atcCode, String unitString) {
+        // 1. Trích xuất con số quan trọng từ chuỗi unit của AI
+        // Ví dụ: AI trả về "Viên nén 500 mg" -> Ta nên tìm "500" hoặc "500 mg"
+        // Để an toàn nhất, ta nên tìm theo con số định lượng (dosage)
+        String refineText = extractDosage(unitString);
+
+        // Nếu không tách được số, dùng nguyên chuỗi để tìm
+        if (refineText.isEmpty())
+            refineText = unitString;
+
+        List<Medication> matches = medicationRepository.findByAtcCodeAndRefinement(atcCode, refineText);
+
+        // Nếu tìm kết hợp không thấy (do lệch chữ), thì fallback về tìm chỉ theo ATC
+        if (matches.isEmpty()) {
+            return null;
+        }
+
+        return matches.stream()
+                .map(inventoryMapper::toDto)
+                .toList();
+    }
+
+    // Hàm phụ: Tách số liều lượng (Ví dụ: "Viên nén 500 mg" -> "500")
+    private String extractDosage(String text) {
+        if (text == null)
+            return "";
+        // Regex tìm số liền trước mg, g, ml... hoặc đơn giản là cụm số
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("(\\d+(\\.\\d+)?)\\s*(mg|ml|g|mcg|iu)",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m = p.matcher(text);
+        if (m.find()) {
+            return m.group(0); // Lấy cả số và đơn vị, ví dụ "500 mg"
+        }
+        return "";
     }
 }
