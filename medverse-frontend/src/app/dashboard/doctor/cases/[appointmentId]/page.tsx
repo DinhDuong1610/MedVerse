@@ -107,6 +107,42 @@ function isDraftPrescription(prescription?: Prescription | null) {
     return prescription?.status === 'DRAFT';
 }
 
+function getCompleteVisitWarning(
+    prescription: Prescription | null,
+    hasCriticalSafetyAlert: boolean,
+) {
+    if (!prescription) {
+        return {
+            title: 'Hoàn tất ca khám khi chưa có đơn thuốc?',
+            content:
+                'Ca khám này chưa có đơn thuốc. Nếu bệnh nhân không cần dùng thuốc, bạn vẫn có thể hoàn tất ca khám.',
+        };
+    }
+
+    if (prescription.status === 'DRAFT') {
+        return {
+            title: 'Chưa thể hoàn tất ca khám',
+            content:
+                'Đơn thuốc vẫn đang ở trạng thái DRAFT. Hãy finalize hoặc cancel đơn thuốc trước khi hoàn tất ca khám.',
+            blocked: true,
+        };
+    }
+
+    if (hasCriticalSafetyAlert) {
+        return {
+            title: 'Đơn thuốc có cảnh báo an toàn mức cao',
+            content:
+                'Đơn thuốc có cảnh báo HIGH/CRITICAL. Hãy chắc chắn bác sĩ đã kiểm tra kỹ AI safety trước khi hoàn tất ca khám.',
+        };
+    }
+
+    return {
+        title: 'Hoàn tất ca khám?',
+        content:
+            'Sau khi hoàn tất, bệnh án sẽ bị khóa chỉnh sửa và lịch hẹn sẽ chuyển sang COMPLETED.',
+    };
+}
+
 function formatDateTime(value?: string) {
     if (!value) return 'Chưa rõ';
 
@@ -327,25 +363,51 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         }
     };
 
-    const handleCompleteMedicalRecord = async () => {
+    const handleCompleteMedicalRecord = () => {
         if (!medicalRecord) return;
 
-        try {
-            setActionLoading('complete-record');
+        const warning = getCompleteVisitWarning(
+            prescription,
+            hasCriticalSafetyAlert,
+        );
 
-            await completeMedicalRecord(medicalRecord.id);
+        if (warning.blocked) {
+            Modal.warning({
+                title: warning.title,
+                content: warning.content,
+                okText: 'Đã hiểu',
+            });
 
-            message.success('Đã hoàn tất bệnh án.');
-            await loadCase();
-        } catch (err) {
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : 'Không thể hoàn tất bệnh án.',
-            );
-        } finally {
-            setActionLoading(null);
+            return;
         }
+
+        Modal.confirm({
+            title: warning.title,
+            content: warning.content,
+            okText: 'Hoàn tất ca khám',
+            cancelText: 'Đóng',
+            onOk: async () => {
+                try {
+                    setActionLoading('complete-record');
+
+                    await completeMedicalRecord(medicalRecord.id);
+
+                    message.success(
+                        'Đã hoàn tất ca khám. Lịch hẹn đã chuyển sang COMPLETED.',
+                    );
+
+                    await loadCase();
+                } catch (err) {
+                    message.error(
+                        err instanceof Error
+                            ? err.message
+                            : 'Không thể hoàn tất ca khám.',
+                    );
+                } finally {
+                    setActionLoading(null);
+                }
+            },
+        });
     };
 
     const handleAddDiagnosis = async (values: DiagnosisFormValues) => {
@@ -637,7 +699,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         <DashboardFrame
             session={session}
             title="Doctor Clinical Workspace"
-            subtitle="Khám bệnh, bệnh án, chẩn đoán, đơn thuốc và AI safety"
+            subtitle="Khám bệnh, AI hỗ trợ chẩn đoán, kê đơn và hoàn tất ca khám"
         >
             <RoleGuardState
                 session={session}
@@ -760,16 +822,13 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
 
                                     <Button
                                         type="primary"
-                                        disabled={
-                                            !canWriteEhr ||
-                                            recordLocked
-                                        }
+                                        disabled={!canWriteEhr || recordLocked}
                                         loading={
                                             actionLoading === 'complete-record'
                                         }
                                         onClick={handleCompleteMedicalRecord}
                                     >
-                                        Complete
+                                        Hoàn tất ca khám
                                     </Button>
                                 </Space>
                             ) : null
@@ -878,7 +937,9 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                             form={diagnosisForm}
                             layout="vertical"
                             onFinish={handleAddDiagnosis}
-                            disabled={!canWriteEhr || !medicalRecord || recordLocked}
+                            disabled={
+                                !canWriteEhr || !medicalRecord || recordLocked
+                            }
                         >
                             <Form.Item
                                 label="Chẩn đoán"
@@ -913,7 +974,11 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 type="primary"
                                 ghost
                                 htmlType="submit"
-                                disabled={!canWriteEhr || !medicalRecord || recordLocked}
+                                disabled={
+                                    !canWriteEhr ||
+                                    !medicalRecord ||
+                                    recordLocked
+                                }
                                 loading={actionLoading === 'add-diagnosis'}
                             >
                                 Thêm chẩn đoán
