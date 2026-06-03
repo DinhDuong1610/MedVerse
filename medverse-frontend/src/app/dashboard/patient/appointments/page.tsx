@@ -1,32 +1,18 @@
 'use client';
 
-import {
-    Button,
-    Card,
-    List,
-    Modal,
-    Timeline,
-    Typography,
-    message,
-} from 'antd';
+import { Button, Modal, Timeline, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import DashboardFrame from '../../_components/DashboardFrame';
-import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
 import ClinicalPageState from '../../_components/ClinicalPageState';
-import RoleGuardState from '../../_components/RoleGuardState';
+import PatientPortalFrame from '../../_components/PatientPortalFrame';
 import StatusTag from '../../_components/StatusTag';
+import { hasRole } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import {
     cancelAppointment,
-    getAppointments,
+    getMyAppointments,
 } from '@/services/appointment.service';
-import type { AuthSession } from '@/types/auth';
 import type { Appointment } from '@/types/clinical';
-import styles from '../../dashboard.module.scss';
-
-type SessionWithUserId = AuthSession & {
-    userId?: string;
-};
+import styles from '../../_components/patient-portal.module.scss';
 
 export default function PatientAppointmentsPage() {
     const { session, loading: authLoading } = useAuthSession();
@@ -37,31 +23,17 @@ export default function PatientAppointmentsPage() {
     const [error, setError] = useState<string | null>(null);
 
     const loadAppointments = async () => {
-        if (!session) return;
-
         try {
             setLoading(true);
             setError(null);
 
-            const currentSession = session as SessionWithUserId;
-
-            const page = await getAppointments(
-                currentSession.userId
-                    ? {
-                        patientId: currentSession.userId,
-                        size: 50,
-                    }
-                    : {
-                        size: 50,
-                    },
-            );
-
+            const page = await getMyAppointments(50);
             setAppointments(page.content || []);
         } catch (err) {
             setError(
                 err instanceof Error
                     ? err.message
-                    : 'Không thể tải lịch hẹn. Nếu lỗi 403, backend cần endpoint /v1/appointments/me hoặc cấp quyền đọc phù hợp cho Patient.',
+                    : 'Không thể tải lịch hẹn của bạn.',
             );
         } finally {
             setLoading(false);
@@ -71,14 +43,13 @@ export default function PatientAppointmentsPage() {
     useEffect(() => {
         if (!session) return;
 
-        if (session.role !== 'PATIENT') {
+        if (!hasRole(session, 'PATIENT')) {
             setError('Trang này chỉ dành cho bệnh nhân.');
             setLoading(false);
             return;
         }
 
         loadAppointments();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
     const upcoming = useMemo(
@@ -111,7 +82,7 @@ export default function PatientAppointmentsPage() {
 
                     await cancelAppointment(
                         appointment.id,
-                        'Patient cancelled from MedVerse portal.',
+                        'Patient cancelled from MedVerse patient portal.',
                     );
 
                     message.success('Đã hủy lịch hẹn.');
@@ -134,130 +105,154 @@ export default function PatientAppointmentsPage() {
     }
 
     return (
-        <DashboardFrame
-            session={session}
-            title="Lịch hẹn của tôi"
-            subtitle="Theo dõi timeline khám bệnh và trạng thái appointment"
-        >
-            <RoleGuardState session={session} allow={['PATIENT']}>
-                <ClinicalPageState loading={loading} error={error}>
-                    <div className={styles.detailGrid}>
-                        <Card className={styles.detailCard} title="Timeline sắp tới">
-                            {upcoming.length === 0 ? (
-                                <ClinicalEmptyState
-                                    title="Chưa có lịch hẹn sắp tới"
-                                    description="Sau khi lễ tân duyệt yêu cầu, lịch hẹn sẽ xuất hiện tại đây."
-                                />
-                            ) : (
-                                <Timeline
-                                    items={upcoming.map((appointment) => ({
-                                        color:
-                                            appointment.status === 'CONFIRMED'
-                                                ? 'cyan'
-                                                : 'blue',
-                                        children: (
-                                            <div>
-                                                <div className={styles.listTitle}>
-                                                    <strong>
-                                                        {new Date(
-                                                            appointment.startTime,
-                                                        ).toLocaleString('vi-VN')}
-                                                    </strong>
+        <PatientPortalFrame session={session}>
+            <section className={styles.hero}>
+                <div>
+                    <div className={styles.heroKicker}>Appointments</div>
+                    <h1 className={styles.heroTitle}>Lịch hẹn của tôi</h1>
+                    <p className={styles.heroDescription}>
+                        Theo dõi các lịch khám đã được lễ tân xác nhận, xem thời
+                        gian khám và hủy lịch khi không còn nhu cầu.
+                    </p>
+                </div>
 
-                                                    <StatusTag
-                                                        value={appointment.status}
-                                                    />
-                                                </div>
+                <article className={styles.heroCard}>
+                    <span>Lịch sắp tới</span>
+                    <strong>{upcoming.length}</strong>
+                    <p>
+                        Lịch hẹn có trạng thái SCHEDULED hoặc CONFIRMED sẽ hiển
+                        thị trong nhóm sắp tới.
+                    </p>
+                </article>
+            </section>
 
-                                                <Typography.Paragraph>
-                                                    Bác sĩ:{' '}
-                                                    <b>
-                                                        {appointment.doctorName ||
-                                                            'Chưa rõ bác sĩ'}
-                                                    </b>
-                                                </Typography.Paragraph>
-
-                                                <Typography.Paragraph>
-                                                    Loại khám:{' '}
-                                                    <b>
-                                                        {appointment.type || 'OFFLINE'}
-                                                    </b>
-                                                </Typography.Paragraph>
-
-                                                <Button
-                                                    danger
-                                                    loading={
-                                                        cancellingId ===
-                                                        appointment.id
-                                                    }
-                                                    onClick={() =>
-                                                        handleCancel(appointment)
-                                                    }
-                                                >
-                                                    Hủy lịch hẹn
-                                                </Button>
-                                            </div>
-                                        ),
-                                    }))}
-                                />
-                            )}
-                        </Card>
-
-                        <Card className={styles.detailCard} title="Lịch sử lịch hẹn">
-                            {past.length === 0 ? (
-                                <ClinicalEmptyState
-                                    title="Chưa có lịch sử"
-                                    description="Các lịch đã hoàn tất hoặc đã hủy sẽ hiển thị ở đây."
-                                />
-                            ) : (
-                                <List
-                                    dataSource={past}
-                                    renderItem={(appointment) => (
-                                        <List.Item
-                                            className={styles.cleanListItem}
-                                        >
-                                            <List.Item.Meta
-                                                title={
-                                                    <div className={styles.listTitle}>
-                                                        <strong>
-                                                            {new Date(
-                                                                appointment.startTime,
-                                                            ).toLocaleString(
-                                                                'vi-VN',
-                                                            )}
-                                                        </strong>
-
-                                                        <StatusTag
-                                                            value={
-                                                                appointment.status
-                                                            }
-                                                        />
-                                                    </div>
-                                                }
-                                                description={
-                                                    <div>
-                                                        <p>
-                                                            Bác sĩ:{' '}
-                                                            <b>
-                                                                {appointment.doctorName ||
-                                                                    'Chưa rõ bác sĩ'}
-                                                            </b>
-                                                        </p>
-                                                        <p>
-                                                            {appointment.diagnosis ||
-                                                                'Không có ghi chú.'}
-                                                        </p>
-                                                    </div>
-                                                }
-                                            />
-                                        </List.Item>
-                                    )}
-                                />
-                            )}
-                        </Card>
+            <section className={styles.contentGrid}>
+                <article className={styles.portalPanel}>
+                    <div className={styles.panelHeader}>
+                        <div>
+                            <span>Upcoming</span>
+                            <h2>Lịch khám sắp tới</h2>
+                            <p>
+                                Hãy đến đúng giờ và mang theo giấy tờ cần thiết
+                                nếu khám trực tiếp.
+                            </p>
+                        </div>
                     </div>
-                </ClinicalPageState>
-            </RoleGuardState>
-        </DashboardFrame>
+
+                    <ClinicalPageState
+                        loading={loading}
+                        error={error}
+                        empty={upcoming.length === 0}
+                        emptyTitle="Chưa có lịch hẹn sắp tới"
+                        emptyDescription="Sau khi lễ tân duyệt yêu cầu, lịch hẹn sẽ xuất hiện tại đây."
+                        actionText="Đặt lịch khám"
+                        actionHref="/dashboard/patient/book-appointment"
+                    >
+                        <Timeline
+                            items={upcoming.map((appointment) => ({
+                                color:
+                                    appointment.status === 'CONFIRMED'
+                                        ? 'cyan'
+                                        : 'blue',
+                                children: (
+                                    <article className={styles.listCard}>
+                                        <div className={styles.listTitle}>
+                                            <strong>
+                                                {new Date(
+                                                    appointment.startTime,
+                                                ).toLocaleString('vi-VN')}
+                                            </strong>
+
+                                            <StatusTag
+                                                value={appointment.status}
+                                            />
+                                        </div>
+
+                                        <p className={styles.muted}>
+                                            Bác sĩ:{' '}
+                                            <b>
+                                                {appointment.doctorName ||
+                                                    'Chưa rõ bác sĩ'}
+                                            </b>
+                                        </p>
+
+                                        <p className={styles.muted}>
+                                            Kết thúc:{' '}
+                                            {new Date(
+                                                appointment.endTime,
+                                            ).toLocaleString('vi-VN')}
+                                        </p>
+
+                                        <p className={styles.muted}>
+                                            Hình thức khám:{' '}
+                                            <b>{appointment.type || 'OFFLINE'}</b>
+                                        </p>
+
+                                        <Button
+                                            danger
+                                            loading={
+                                                cancellingId === appointment.id
+                                            }
+                                            onClick={() =>
+                                                handleCancel(appointment)
+                                            }
+                                        >
+                                            Hủy lịch hẹn
+                                        </Button>
+                                    </article>
+                                ),
+                            }))}
+                        />
+                    </ClinicalPageState>
+                </article>
+
+                <article className={styles.portalPanel}>
+                    <div className={styles.panelHeader}>
+                        <div>
+                            <span>History</span>
+                            <h2>Lịch sử lịch hẹn</h2>
+                        </div>
+                    </div>
+
+                    <ClinicalPageState
+                        loading={loading}
+                        error={error}
+                        empty={past.length === 0}
+                        emptyTitle="Chưa có lịch sử"
+                        emptyDescription="Các lịch đã hoàn tất, đã hủy hoặc no-show sẽ hiển thị ở đây."
+                    >
+                        {past.map((appointment) => (
+                            <article
+                                key={appointment.id}
+                                className={styles.listCard}
+                            >
+                                <div className={styles.listTitle}>
+                                    <strong>
+                                        {new Date(
+                                            appointment.startTime,
+                                        ).toLocaleString('vi-VN')}
+                                    </strong>
+
+                                    <StatusTag value={appointment.status} />
+                                </div>
+
+                                <p className={styles.muted}>
+                                    Bác sĩ:{' '}
+                                    <b>
+                                        {appointment.doctorName ||
+                                            'Chưa rõ bác sĩ'}
+                                    </b>
+                                </p>
+
+                                <p className={styles.muted}>
+                                    {appointment.diagnosis ||
+                                        'Không có ghi chú.'}
+                                </p>
+                            </article>
+                        ))}
+                    </ClinicalPageState>
+                </article>
+            </section>
+        </PatientPortalFrame>
     );
 }

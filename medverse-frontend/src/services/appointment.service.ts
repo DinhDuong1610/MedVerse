@@ -11,6 +11,14 @@ export type AppointmentFilter = {
     size?: number;
 };
 
+export async function getMyAppointments(size = 50) {
+    const res = await apiRequest<PageResponse<Appointment>>(
+        `/v1/appointments/me?size=${size}`,
+    );
+
+    return res.data;
+}
+
 export async function getAppointments(filter?: AppointmentFilter) {
     const params = new URLSearchParams();
 
@@ -39,6 +47,14 @@ export async function cancelAppointment(id: string, reason: string) {
     const res = await apiRequest<void>(`/v1/appointments/${id}/cancel`, {
         method: 'PATCH',
         body: reason,
+    });
+
+    return res.data;
+}
+
+export async function markAppointmentNoShow(id: string) {
+    const res = await apiRequest<void>(`/v1/appointments/${id}/no-show`, {
+        method: 'POST',
     });
 
     return res.data;

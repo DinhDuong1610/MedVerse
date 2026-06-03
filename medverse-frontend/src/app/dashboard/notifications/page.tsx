@@ -2,10 +2,12 @@
 
 import { Badge, Button, Card, List, message } from 'antd';
 import { useEffect, useState } from 'react';
-import DashboardFrame from '../_components/DashboardFrame';
 import ClinicalEmptyState from '../_components/ClinicalEmptyState';
 import ClinicalPageState from '../_components/ClinicalPageState';
+import DashboardFrame from '../_components/DashboardFrame';
+import PatientPortalFrame from '../_components/PatientPortalFrame';
 import StatusTag from '../_components/StatusTag';
+import { hasRole } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import {
     getMyNotifications,
@@ -13,7 +15,8 @@ import {
     markNotificationAsRead,
 } from '@/services/notification.service';
 import type { AppNotification } from '@/types/clinical';
-import styles from '../dashboard.module.scss';
+import dashboardStyles from '../dashboard.module.scss';
+import portalStyles from '../_components/patient-portal.module.scss';
 
 export default function NotificationsPage() {
     const { session, loading: authLoading } = useAuthSession();
@@ -69,6 +72,102 @@ export default function NotificationsPage() {
         return <ClinicalPageState loading>Loading</ClinicalPageState>;
     }
 
+    if (hasRole(session, 'PATIENT')) {
+        return (
+            <PatientPortalFrame session={session}>
+                <section className={portalStyles.hero}>
+                    <div>
+                        <div className={portalStyles.heroKicker}>
+                            Notifications
+                        </div>
+                        <h1 className={portalStyles.heroTitle}>
+                            Thông báo của tôi
+                        </h1>
+                        <p className={portalStyles.heroDescription}>
+                            Theo dõi các cập nhật về yêu cầu đặt lịch, lịch hẹn,
+                            bệnh án, đơn thuốc và những thay đổi quan trọng từ
+                            phòng khám.
+                        </p>
+                    </div>
+
+                    <article className={portalStyles.heroCard}>
+                        <span>Thông báo mới</span>
+                        <strong>
+                            {items.filter((item) => !item.read).length}
+                        </strong>
+                        <p>
+                            Bạn có thể đánh dấu từng thông báo hoặc toàn bộ là
+                            đã đọc.
+                        </p>
+                    </article>
+                </section>
+
+                <section
+                    className={portalStyles.portalPanel}
+                    style={{ marginTop: 24 }}
+                >
+                    <div className={portalStyles.panelHeader}>
+                        <div>
+                            <span>Notification center</span>
+                            <h2>Cập nhật gần đây</h2>
+                        </div>
+
+                        <Button onClick={handleReadAll}>
+                            Đánh dấu tất cả đã đọc
+                        </Button>
+                    </div>
+
+                    <ClinicalPageState
+                        loading={loading}
+                        error={error}
+                        empty={items.length === 0}
+                        emptyTitle="Chưa có thông báo"
+                        emptyDescription="Các cập nhật quan trọng sẽ hiển thị tại đây."
+                    >
+                        {items.map((item) => (
+                            <article key={item.id} className={portalStyles.listCard}>
+                                <div className={portalStyles.listTitle}>
+                                    <strong>
+                                        {!item.read && (
+                                            <Badge status="processing" />
+                                        )}{' '}
+                                        {item.title}
+                                    </strong>
+
+                                    <StatusTag
+                                        value={item.read ? 'Đã đọc' : 'Mới'}
+                                    />
+                                </div>
+
+                                <p className={portalStyles.muted}>
+                                    {item.message || 'Không có nội dung.'}
+                                </p>
+
+                                <p className={portalStyles.muted}>
+                                    {item.type} ·{' '}
+                                    {item.createdAt
+                                        ? new Date(
+                                            item.createdAt,
+                                        ).toLocaleString('vi-VN')
+                                        : 'Chưa rõ thời gian'}
+                                </p>
+
+                                {!item.read && (
+                                    <Button
+                                        type="link"
+                                        onClick={() => handleRead(item.id)}
+                                    >
+                                        Đánh dấu đã đọc
+                                    </Button>
+                                )}
+                            </article>
+                        ))}
+                    </ClinicalPageState>
+                </section>
+            </PatientPortalFrame>
+        );
+    }
+
     return (
         <DashboardFrame
             session={session}
@@ -76,8 +175,8 @@ export default function NotificationsPage() {
             subtitle="Theo dõi các cập nhật liên quan đến lịch hẹn, bệnh án và đơn thuốc"
         >
             <ClinicalPageState loading={loading} error={error}>
-                <Card className={styles.detailCard}>
-                    <div className={styles.panelHeader}>
+                <Card className={dashboardStyles.detailCard}>
+                    <div className={dashboardStyles.panelHeader}>
                         <div>
                             <span>Notification Center</span>
                             <h2>Thông báo của tôi</h2>
@@ -97,10 +196,16 @@ export default function NotificationsPage() {
                         <List
                             dataSource={items}
                             renderItem={(item) => (
-                                <List.Item className={styles.cleanListItem}>
+                                <List.Item
+                                    className={dashboardStyles.cleanListItem}
+                                >
                                     <List.Item.Meta
                                         title={
-                                            <div className={styles.listTitle}>
+                                            <div
+                                                className={
+                                                    dashboardStyles.listTitle
+                                                }
+                                            >
                                                 <span>
                                                     {!item.read && (
                                                         <Badge status="processing" />

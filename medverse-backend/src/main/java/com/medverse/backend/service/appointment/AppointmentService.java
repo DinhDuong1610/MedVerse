@@ -268,6 +268,12 @@ public class AppointmentService {
         return appointmentMapper.toDto(updatedAppointment);
     }
 
+    public Page<AppointmentDto> getMyAppointments(User currentUser, Pageable pageable) {
+        return appointmentRepository
+                .findByPatientIdOrderByStartTimeDesc(currentUser.getId(), pageable)
+                .map(appointmentMapper::toDto);
+    }
+
     private boolean hasAuthority(User user, String authority) {
         if (user == null || user.getAuthorities() == null) {
             return false;
