@@ -10,6 +10,16 @@ function normalizeAutocomplete<T>(payload: AiAutocompleteResponse<T>): T[] {
     return payload.suggestions || payload.results || payload.data || [];
 }
 
+export type AiAnalyzeTextPayload = {
+    diagnosis_text_input: string;
+    medical_history?: Record<string, unknown>;
+};
+
+export type AiAnalyzeTextResponse = {
+    data?: Record<string, unknown>;
+    [key: string]: unknown;
+};
+
 export async function getAiHealth() {
     const res = await apiRequest<AiHealth>('/v1/ai/health');
 
@@ -34,4 +44,13 @@ export async function autocompleteIcd(query: string, topK = 8) {
     );
 
     return normalizeAutocomplete(res.data);
+}
+
+export async function analyzeClinicalText(payload: AiAnalyzeTextPayload) {
+    const res = await apiRequest<AiAnalyzeTextResponse>('/v1/ai/analyze-text', {
+        method: 'POST',
+        body: payload,
+    });
+
+    return res.data;
 }

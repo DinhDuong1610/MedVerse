@@ -46,6 +46,14 @@ export async function updateMyMedicalProfile(
     return res.data;
 }
 
+export async function getPatientMedicalProfile(patientId: string) {
+    const res = await apiRequest<PatientMedicalProfile>(
+        `/v1/patient-medical/patients/${patientId}/profile`,
+    );
+
+    return res.data;
+}
+
 export async function getMyAllergies() {
     const res = await apiRequest<Allergy[]>('/v1/patient-medical/me/allergies');
 
@@ -82,6 +90,14 @@ export async function deleteMyAllergy(allergyId: string) {
         {
             method: 'DELETE',
         },
+    );
+
+    return res.data;
+}
+
+export async function getPatientAllergies(patientId: string) {
+    const res = await apiRequest<Allergy[]>(
+        `/v1/patient-medical/patients/${patientId}/allergies`,
     );
 
     return res.data;

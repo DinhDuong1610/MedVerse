@@ -1,5 +1,5 @@
 import { apiRequest } from '@/lib/api/http';
-import type { MedicalRecord } from '@/types/clinical';
+import type { MedicalRecord, MedicalRecordDiagnosis } from '@/types/clinical';
 import type { PageResponse } from '@/types/pagination';
 
 export async function getMyMedicalRecords() {
@@ -10,9 +10,23 @@ export async function getMyMedicalRecords() {
     return res.data;
 }
 
+export async function getMedicalRecordById(id: string) {
+    const res = await apiRequest<MedicalRecord>(`/v1/medical-records/${id}`);
+
+    return res.data;
+}
+
 export async function getMedicalRecordByAppointment(appointmentId: string) {
     const res = await apiRequest<MedicalRecord>(
         `/v1/medical-records/by-appointment/${appointmentId}`,
+    );
+
+    return res.data;
+}
+
+export async function getPatientMedicalRecords(patientId: string, size = 20) {
+    const res = await apiRequest<PageResponse<MedicalRecord>>(
+        `/v1/medical-records/patient/${patientId}?size=${size}`,
     );
 
     return res.data;
@@ -75,11 +89,25 @@ export async function addDiagnosis(
     medicalRecordId: string,
     payload: DiagnosisCreatePayload,
 ) {
-    const res = await apiRequest<unknown>(
+    const res = await apiRequest<MedicalRecordDiagnosis>(
         `/v1/medical-records/${medicalRecordId}/diagnoses`,
         {
             method: 'POST',
             body: payload,
+        },
+    );
+
+    return res.data;
+}
+
+export async function deleteDiagnosis(
+    medicalRecordId: string,
+    diagnosisId: string,
+) {
+    const res = await apiRequest<void>(
+        `/v1/medical-records/${medicalRecordId}/diagnoses/${diagnosisId}`,
+        {
+            method: 'DELETE',
         },
     );
 
