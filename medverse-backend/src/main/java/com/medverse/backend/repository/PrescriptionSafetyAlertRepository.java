@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface PrescriptionSafetyAlertRepository extends JpaRepository<PrescriptionSafetyAlert, UUID> {
 
     List<PrescriptionSafetyAlert> findByPrescriptionIdOrderByCreatedAtDesc(UUID prescriptionId);
+
+    void deleteByPrescriptionId(UUID prescriptionId);
 }

@@ -20,6 +20,15 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.medverse.backend.entity.Allergy;
+import com.medverse.backend.payload.ai.AiCdsAlertDto;
+import com.medverse.backend.payload.ai.AiCdsCheckRequest;
+import com.medverse.backend.payload.ai.AiCdsCheckResponse;
+import com.medverse.backend.service.ai.AiClientService;
+import com.medverse.backend.utils.enumeration.PrescriptionAlertSeverity;
+import com.medverse.backend.utils.enumeration.PrescriptionAlertType;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -34,6 +43,9 @@ public class PrescriptionService {
     private final MedicalRecordRepository medicalRecordRepository;
     private final MedicationRepository medicationRepository;
     private final AuditService auditService;
+    private final AiClientService aiClientService;
+private final AllergyRepository allergyRepository;
+private final ObjectMapper objectMapper;
 
     @Transactional
     public PrescriptionDto createPrescription(User currentUser, PrescriptionCreateRequest request) {
@@ -379,5 +391,105 @@ public class PrescriptionService {
                 .doctorAction(alert.getDoctorAction())
                 .doctorNote(alert.getDoctorNote())
                 .build();
+    }
+
+    @Transactional
+    public PrescriptionDto runSafetyCheck(User currentUser, UUID prescriptionId) {
+        Prescription prescription = getPrescription(prescriptionId);
+        assertCanWritePrescription(currentUser, prescription);
+
+        var items = itemRepository.findByPrescriptionIdOrderByCreatedAtAsc(prescriptionId);
+        var allergies = allergyRepository.findByPatientIdOrderByCreatedAtDesc(
+                prescription.getPatient().getId());
+
+        var targetMedications = items.stream()
+                .map(item -> {
+                    java.util.Map<String, Object> med = new java.util.LinkedHashMap<>();
+                    med.put("atc_code", item.getAtcCode());
+                    med.put("dose", item.getDosage());
+                    med.put("name", item.getMedicationName());
+                    med.put("active_ingredient", item.getActiveIngredient());
+                    return med;
+                })
+                .toList();
+
+        var allergyPayload = allergies.stream()
+                .map(allergy -> {
+                    java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                    payload.put("text", allergy.getAllergen());
+                    payload.put("reaction", allergy.getReaction());
+                    payload.put("severity", allergy.getSeverity() != null ? allergy.getSeverity().name() : null);
+                    return payload;
+                })
+                .toList();
+
+        java.util.Map<String, Object> patientContext = new java.util.LinkedHashMap<>();
+        patientContext.put("patient_id", prescription.getPatient().getId().toString());
+        patientContext.put("allergies", allergyPayload);
+
+        AiCdsCheckRequest request = AiCdsCheckRequest.builder()
+                .targetMedications(targetMedications)
+                .patientContext(patientContext)
+                .build();
+
+        AiCdsCheckResponse response = aiClientService.checkPrescription(request);
+
+        alertRepository.deleteByPrescriptionId(prescriptionId);
+
+        if (response != null && response.getAlerts() != null) {
+            for (AiCdsAlertDto alertDto : response.getAlerts()) {
+                PrescriptionSafetyAlert alert = PrescriptionSafetyAlert.builder()
+                        .prescription(prescription)
+                        .type(parseAlertType(alertDto.getType()))
+                        .severity(parseAlertSeverity(alertDto.getSeverity()))
+                        .title(alertDto.getTitle())
+                        .message(alertDto.getMessage())
+                        .recommendation(alertDto.getRecommendation())
+                        .aiPayload(toJson(response))
+                        .build();
+
+                alertRepository.save(alert);
+            }
+        }
+
+        auditService.record(
+                "RUN_PRESCRIPTION_SAFETY_CHECK",
+                "PRESCRIPTION",
+                prescriptionId.toString(),
+                "Ran AI CDS prescription safety check");
+
+        return toDto(prescription);
+    }
+
+    private PrescriptionAlertType parseAlertType(String type) {
+        if (type == null || type.isBlank()) {
+            return PrescriptionAlertType.OTHER;
+        }
+
+        try {
+            return PrescriptionAlertType.valueOf(type.trim().toUpperCase());
+        } catch (Exception e) {
+            return PrescriptionAlertType.OTHER;
+        }
+    }
+
+    private PrescriptionAlertSeverity parseAlertSeverity(String severity) {
+        if (severity == null || severity.isBlank()) {
+            return PrescriptionAlertSeverity.LOW;
+        }
+
+        try {
+            return PrescriptionAlertSeverity.valueOf(severity.trim().toUpperCase());
+        } catch (Exception e) {
+            return PrescriptionAlertSeverity.LOW;
+        }
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return "{\"error\":\"Failed to serialize AI payload\"}";
+        }
     }
 }

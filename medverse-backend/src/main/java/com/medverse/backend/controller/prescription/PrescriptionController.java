@@ -161,4 +161,14 @@ public class PrescriptionController {
         prescriptionService.cancelPrescription(currentUser, id, reason);
         return ResponseEntity.ok(new AppResponse<>("SUCCESS", "Prescription cancelled.", null, null));
     }
+
+    @PatchMapping("/{id}/safety-check")
+    @PreAuthorize("hasAuthority('PRESCRIPTION:WRITE')")
+    @Operation(summary = "Run AI prescription safety check")
+    public ResponseEntity<AppResponse<PrescriptionDto>> runSafetyCheck(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID id) {
+        PrescriptionDto dto = prescriptionService.runSafetyCheck(currentUser, id);
+        return ResponseEntity.ok(new AppResponse<>("SUCCESS", "Prescription safety check completed.", dto, null));
+    }
 }
