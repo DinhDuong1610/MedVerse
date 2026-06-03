@@ -8,16 +8,17 @@ import {
     Form,
     List,
     Modal,
-    Skeleton,
     Space,
-    Tag,
     TimePicker,
     message,
 } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardFrame from '../../_components/DashboardFrame';
 import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
+import ClinicalPageState from '../../_components/ClinicalPageState';
+import RoleGuardState from '../../_components/RoleGuardState';
+import StatusTag from '../../_components/StatusTag';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import { getDirectoryDoctors } from '@/services/directory.service';
 import {
@@ -25,19 +26,17 @@ import {
     deleteWorkSlot,
     getWorkSlots,
 } from '@/services/work-slot.service';
+import type { AuthSession } from '@/types/auth';
 import type { WorkSlot } from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
-import error from 'next/error';
 
 type SlotFormValues = {
-    date: dayjs.Dayjs;
-    timeRange: [dayjs.Dayjs, dayjs.Dayjs];
+    date: Dayjs;
+    timeRange: [Dayjs, Dayjs];
 };
 
-const statusColor: Record<string, string> = {
-    AVAILABLE: 'green',
-    BOOKED: 'blue',
-    CANCELLED: 'red',
+type SessionWithUserId = AuthSession & {
+    userId?: string;
 };
 
 export default function DoctorWorkSlotsPage() {
@@ -45,27 +44,29 @@ export default function DoctorWorkSlotsPage() {
 
     const [form] = Form.useForm<SlotFormValues>();
 
+    const [doctorId, setDoctorId] = useState<string | null>(null);
     const [slots, setSlots] = useState<WorkSlot[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [openCreate, setOpenCreate] = useState(false);
-    const [doctorId, setDoctorId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const from = useMemo(() => dayjs().startOf('day').toISOString(), []);
-    const to = useMemo(() => dayjs().add(30, 'day').endOf('day').toISOString(), []);
+    const to = useMemo(
+        () => dayjs().add(30, 'day').endOf('day').toISOString(),
+        [],
+    );
 
     const resolveDoctorId = async () => {
         if (!session) return null;
 
-        // Nếu sau này AuthSession có userId thì dùng luôn
-        if ('userId' in session && session.userId) {
-            return session.userId;
+        const currentSession = session as SessionWithUserId;
+
+        if (currentSession.userId) {
+            return currentSession.userId;
         }
 
-        // Hiện tại AuthSession chưa có userId,
-        // nên lấy doctorId từ Directory API theo email
         const doctors = await getDirectoryDoctors({
             keyword: session.email,
         });
@@ -126,6 +127,7 @@ export default function DoctorWorkSlotsPage() {
         }
 
         loadSlots();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
     const handleCreate = async (values: SlotFormValues) => {
@@ -161,9 +163,9 @@ export default function DoctorWorkSlotsPage() {
             form.resetFields();
             setOpenCreate(false);
             await loadSlots();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể tạo slot.',
+                err instanceof Error ? err.message : 'Không thể tạo slot.',
             );
         } finally {
             setCreating(false);
@@ -185,9 +187,9 @@ export default function DoctorWorkSlotsPage() {
                     message.success('Đã xóa slot.');
 
                     await loadSlots();
-                } catch (error) {
+                } catch (err) {
                     message.error(
-                        error instanceof Error ? error.message : 'Không thể xóa slot.',
+                        err instanceof Error ? err.message : 'Không thể xóa slot.',
                     );
                 } finally {
                     setDeletingId(null);
@@ -196,11 +198,13 @@ export default function DoctorWorkSlotsPage() {
         });
     };
 
-    if (authLoading || !session || loading) {
-        return <Skeleton active paragraph={{ rows: 8 }} />;
+    if (authLoading || !session) {
+        return <ClinicalPageState loading>Loading</ClinicalPageState>;
     }
 
-    const availableCount = slots.filter((slot) => slot.status === 'AVAILABLE').length;
+    const availableCount = slots.filter(
+        (slot) => slot.status === 'AVAILABLE',
+    ).length;
     const bookedCount = slots.filter((slot) => slot.status === 'BOOKED').length;
 
     return (
@@ -209,117 +213,144 @@ export default function DoctorWorkSlotsPage() {
             title="Slot làm việc"
             subtitle="Tạo và quản lý khung giờ khám để lễ tân có thể duyệt lịch"
         >
+            <RoleGuardState session={session} allow={['DOCTOR']}>
+                <ClinicalPageState loading={loading} error={error}>
+                    <div className={styles.detailGrid}>
+                        <Card className={styles.detailCard}>
+                            <div className={styles.panelHeader}>
+                                <div>
+                                    <span>Doctor availability</span>
+                                    <h2>Khung giờ trong 30 ngày tới</h2>
+                                    <p>
+                                        Available: <b>{availableCount}</b> · Booked:{' '}
+                                        <b>{bookedCount}</b>
+                                    </p>
+                                </div>
 
-            <div className={styles.detailGrid}>
-                {error && (
-                    <Alert
-                        type="error"
-                        showIcon
-                        message="Không thể tải slot làm việc"
-                        description={error}
-                        style={{ marginBottom: 16 }}
-                    />
-                )}
-                <Card className={styles.detailCard}>
-                    <div className={styles.panelHeader}>
-                        <div>
-                            <span>Doctor availability</span>
-                            <h2>Khung giờ trong 30 ngày tới</h2>
-                            <p>
-                                Available: <b>{availableCount}</b> · Booked:{' '}
-                                <b>{bookedCount}</b>
-                            </p>
-                        </div>
+                                <Button
+                                    type="primary"
+                                    onClick={() => setOpenCreate(true)}
+                                >
+                                    Tạo slot mới
+                                </Button>
+                            </div>
 
-                        <Button type="primary" onClick={() => setOpenCreate(true)}>
-                            Tạo slot mới
-                        </Button>
+                            {doctorId && (
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    message="Doctor ID đã được xác định"
+                                    description={doctorId}
+                                    style={{ marginBottom: 16 }}
+                                />
+                            )}
+
+                            {slots.length === 0 ? (
+                                <ClinicalEmptyState
+                                    title="Chưa có slot làm việc"
+                                    description="Tạo slot để lễ tân có thể gán lịch khám cho bệnh nhân."
+                                />
+                            ) : (
+                                <List
+                                    dataSource={slots}
+                                    renderItem={(slot) => (
+                                        <List.Item className={styles.cleanListItem}>
+                                            <List.Item.Meta
+                                                title={
+                                                    <div className={styles.listTitle}>
+                                                        <strong>
+                                                            {new Date(
+                                                                slot.startTime,
+                                                            ).toLocaleString('vi-VN')}{' '}
+                                                            →{' '}
+                                                            {new Date(
+                                                                slot.endTime,
+                                                            ).toLocaleTimeString('vi-VN')}
+                                                        </strong>
+
+                                                        <StatusTag value={slot.status} />
+                                                    </div>
+                                                }
+                                                description={
+                                                    slot.doctorName || session.email
+                                                }
+                                            />
+
+                                            <Space>
+                                                <Button
+                                                    danger
+                                                    disabled={slot.status !== 'AVAILABLE'}
+                                                    loading={deletingId === slot.id}
+                                                    onClick={() => handleDelete(slot)}
+                                                >
+                                                    Xóa
+                                                </Button>
+                                            </Space>
+                                        </List.Item>
+                                    )}
+                                />
+                            )}
+                        </Card>
                     </div>
 
-                    {slots.length === 0 ? (
-                        <ClinicalEmptyState
-                            title="Chưa có slot làm việc"
-                            description="Tạo slot để lễ tân có thể gán lịch khám cho bệnh nhân."
-                        />
-                    ) : (
-                        <List
-                            dataSource={slots}
-                            renderItem={(slot) => (
-                                <List.Item className={styles.cleanListItem}>
-                                    <List.Item.Meta
-                                        title={
-                                            <div className={styles.listTitle}>
-                                                <strong>
-                                                    {new Date(slot.startTime).toLocaleString('vi-VN')} →{' '}
-                                                    {new Date(slot.endTime).toLocaleTimeString('vi-VN')}
-                                                </strong>
-                                                <Tag color={statusColor[slot.status] || 'default'}>
-                                                    {slot.status}
-                                                </Tag>
-                                            </div>
-                                        }
-                                        description={slot.doctorName || session.email}
-                                    />
-
-                                    <Button
-                                        danger
-                                        disabled={slot.status !== 'AVAILABLE'}
-                                        loading={deletingId === slot.id}
-                                        onClick={() => handleDelete(slot)}
-                                    >
-                                        Xóa
-                                    </Button>
-                                </List.Item>
-                            )}
-                        />
-                    )}
-                </Card>
-            </div>
-
-            <Modal
-                title="Tạo slot làm việc"
-                open={openCreate}
-                onCancel={() => setOpenCreate(false)}
-                footer={null}
-                destroyOnClose
-            >
-                <Form
-                    form={form}
-                    layout="vertical"
-                    onFinish={handleCreate}
-                    initialValues={{
-                        date: dayjs().add(1, 'day'),
-                    }}
-                >
-                    <Form.Item
-                        label="Ngày khám"
-                        name="date"
-                        rules={[{ required: true, message: 'Chọn ngày' }]}
+                    <Modal
+                        title="Tạo slot làm việc"
+                        open={openCreate}
+                        onCancel={() => setOpenCreate(false)}
+                        footer={null}
+                        destroyOnClose
                     >
-                        <DatePicker
-                            style={{ width: '100%' }}
-                            disabledDate={(current) =>
-                                current ? current <= dayjs().endOf('day') : false
-                            }
-                        />
-                    </Form.Item>
+                        <Form
+                            form={form}
+                            layout="vertical"
+                            onFinish={handleCreate}
+                            initialValues={{
+                                date: dayjs().add(1, 'day'),
+                            }}
+                        >
+                            <Form.Item
+                                label="Ngày khám"
+                                name="date"
+                                rules={[{ required: true, message: 'Chọn ngày' }]}
+                            >
+                                <DatePicker
+                                    style={{ width: '100%' }}
+                                    disabledDate={(current) =>
+                                        current
+                                            ? current <= dayjs().endOf('day')
+                                            : false
+                                    }
+                                />
+                            </Form.Item>
 
-                    <Form.Item
-                        label="Khoảng giờ"
-                        name="timeRange"
-                        rules={[{ required: true, message: 'Chọn khoảng giờ' }]}
-                    >
-                        <TimePicker.RangePicker
-                            format="HH:mm"
-                            style={{ width: '100%' }}
-                        />
-                    </Form.Item>
+                            <Form.Item
+                                label="Khoảng giờ"
+                                name="timeRange"
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Chọn khoảng giờ',
+                                    },
+                                ]}
+                            >
+                                <TimePicker.RangePicker
+                                    format="HH:mm"
+                                    style={{ width: '100%' }}
+                                />
+                            </Form.Item>
 
-                    <Button type="primary" htmlType="submit" loading={creating} block>
-                        Tạo slot
-                    </Button>
-                </Form>
-            </Modal>
+                            <Button
+                                type="primary"
+                                htmlType="submit"
+                                loading={creating}
+                                block
+                            >
+                                Tạo slot
+                            </Button>
+                        </Form>
+                    </Modal>
+                </ClinicalPageState>
+            </RoleGuardState>
         </DashboardFrame>
     );
 }
