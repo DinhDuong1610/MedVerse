@@ -11,8 +11,9 @@ export type LoginRequest = {
 export type DemoRole = 'ADMIN' | 'DOCTOR' | 'RECEPTIONIST' | 'PATIENT';
 
 export type AuthSession = {
+    accessToken: string;
+    refreshToken?: string;
     email: string;
     role: DemoRole;
-    accessToken: string;
-    refreshToken: string;
+    userId?: string;
 };

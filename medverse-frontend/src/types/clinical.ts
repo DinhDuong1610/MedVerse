@@ -248,3 +248,15 @@ export type DirectoryDoctor = {
     experienceYears?: number;
     bio?: string;
 };
+
+export type AppointmentStatus =
+    | 'SCHEDULED'
+    | 'CONFIRMED'
+    | 'COMPLETED'
+    | 'CANCELLED'
+    | 'NO_SHOW';
+
+export type WorkSlotCreatePayload = {
+    startTime: string;
+    endTime: string;
+};
