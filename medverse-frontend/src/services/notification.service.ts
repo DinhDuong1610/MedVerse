@@ -2,9 +2,9 @@ import { apiRequest } from '@/lib/api/http';
 import type { AppNotification } from '@/types/clinical';
 import type { PageResponse } from '@/types/pagination';
 
-export async function getMyNotifications() {
+export async function getMyNotifications(size = 20) {
     const res = await apiRequest<PageResponse<AppNotification>>(
-        '/v1/notifications/me?size=20',
+        `/v1/notifications/me?size=${size}`,
     );
 
     return res.data;

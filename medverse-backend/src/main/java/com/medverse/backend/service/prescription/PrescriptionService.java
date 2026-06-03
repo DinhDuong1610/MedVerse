@@ -28,7 +28,8 @@ import com.medverse.backend.payload.ai.AiCdsCheckResponse;
 import com.medverse.backend.service.ai.AiClientService;
 import com.medverse.backend.utils.enumeration.PrescriptionAlertSeverity;
 import com.medverse.backend.utils.enumeration.PrescriptionAlertType;
-
+import com.medverse.backend.service.notification.NotificationService;
+import com.medverse.backend.utils.enumeration.NotificationType;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -43,9 +44,10 @@ public class PrescriptionService {
     private final MedicalRecordRepository medicalRecordRepository;
     private final MedicationRepository medicationRepository;
     private final AuditService auditService;
+    private final NotificationService notificationService;
     private final AiClientService aiClientService;
-private final AllergyRepository allergyRepository;
-private final ObjectMapper objectMapper;
+    private final AllergyRepository allergyRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public PrescriptionDto createPrescription(User currentUser, PrescriptionCreateRequest request) {
@@ -240,6 +242,14 @@ private final ObjectMapper objectMapper;
                 saved.getId().toString(),
                 "Finalized prescription");
 
+        notificationService.notify(
+                saved.getPatient(),
+                NotificationType.PRESCRIPTION_FINALIZED,
+                "Đơn thuốc đã được hoàn tất",
+                "Bác sĩ đã hoàn tất đơn thuốc. Bạn có thể xem chi tiết trong mục Đơn thuốc.",
+                "PRESCRIPTION",
+                saved.getId().toString());
+
         return toDto(saved);
     }
 
@@ -260,6 +270,14 @@ private final ObjectMapper objectMapper;
                 "PRESCRIPTION",
                 prescriptionId.toString(),
                 "Reason: " + reason);
+
+        notificationService.notify(
+                prescription.getPatient(),
+                NotificationType.PRESCRIPTION_CANCELLED,
+                "Đơn thuốc đã bị hủy",
+                "Đơn thuốc đã bị hủy. Lý do: " + reason,
+                "PRESCRIPTION",
+                prescription.getId().toString());
     }
 
     private Prescription getPrescription(UUID id) {

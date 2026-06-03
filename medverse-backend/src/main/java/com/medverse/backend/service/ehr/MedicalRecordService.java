@@ -6,8 +6,10 @@ import com.medverse.backend.repository.AppointmentRepository;
 import com.medverse.backend.repository.MedicalRecordDiagnosisRepository;
 import com.medverse.backend.repository.MedicalRecordRepository;
 import com.medverse.backend.service.AuditService;
+import com.medverse.backend.service.notification.NotificationService;
 import com.medverse.backend.utils.enumeration.AppointmentStatus;
 import com.medverse.backend.utils.enumeration.MedicalRecordStatus;
+import com.medverse.backend.utils.enumeration.NotificationType;
 import com.medverse.backend.utils.exception.DuplicateResourceException;
 import com.medverse.backend.utils.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class MedicalRecordService {
     private final MedicalRecordDiagnosisRepository diagnosisRepository;
     private final AppointmentRepository appointmentRepository;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     @Transactional
     public MedicalRecordDto createMedicalRecord(User currentUser, MedicalRecordCreateRequest request) {
@@ -220,6 +223,14 @@ public class MedicalRecordService {
                 "MEDICAL_RECORD",
                 saved.getId().toString(),
                 "Completed medical record and marked appointment completed");
+
+        notificationService.notify(
+                saved.getPatient(),
+                NotificationType.MEDICAL_RECORD_COMPLETED,
+                "Ca khám đã hoàn tất",
+                "Bác sĩ đã hoàn tất bệnh án. Bạn có thể xem kết quả khám trong mục Bệnh án.",
+                "MEDICAL_RECORD",
+                saved.getId().toString());
 
         return toDto(saved);
     }

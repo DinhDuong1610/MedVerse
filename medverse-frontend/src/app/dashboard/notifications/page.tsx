@@ -1,7 +1,24 @@
 'use client';
 
-import { Badge, Button, Card, List, message } from 'antd';
-import { useEffect, useState } from 'react';
+import {
+    Badge,
+    Button,
+    Card,
+    List,
+    Space,
+    Tag,
+    message,
+} from 'antd';
+import {
+    BellOutlined,
+    CalendarOutlined,
+    CheckCircleOutlined,
+    CloseCircleOutlined,
+    ExclamationCircleOutlined,
+    FileDoneOutlined,
+    MedicineBoxOutlined,
+} from '@ant-design/icons';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import ClinicalEmptyState from '../_components/ClinicalEmptyState';
 import ClinicalPageState from '../_components/ClinicalPageState';
 import DashboardFrame from '../_components/DashboardFrame';
@@ -18,6 +35,193 @@ import type { AppNotification } from '@/types/clinical';
 import dashboardStyles from '../dashboard.module.scss';
 import portalStyles from '../_components/patient-portal.module.scss';
 
+function formatDateTime(value?: string) {
+    if (!value) return 'Chưa rõ thời gian';
+
+    return new Date(value).toLocaleString('vi-VN');
+}
+
+function getNotificationLabel(type?: string) {
+    const labels: Record<string, string> = {
+        APPOINTMENT_REQUEST_CREATED: 'Yêu cầu đặt lịch',
+        APPOINTMENT_REQUEST_APPROVED: 'Lịch đã duyệt',
+        APPOINTMENT_REQUEST_REJECTED: 'Yêu cầu bị từ chối',
+        APPOINTMENT_REQUEST_CANCELLED: 'Yêu cầu đã hủy',
+        APPOINTMENT_CANCELLED: 'Lịch đã hủy',
+        APPOINTMENT_RESCHEDULED: 'Đổi lịch',
+        APPOINTMENT_NO_SHOW: 'Vắng mặt',
+        MEDICAL_RECORD_COMPLETED: 'Kết quả khám',
+        PRESCRIPTION_FINALIZED: 'Đơn thuốc',
+        PRESCRIPTION_CANCELLED: 'Hủy đơn thuốc',
+        AI_SAFETY_ALERT: 'AI Safety',
+        SYSTEM: 'Hệ thống',
+    };
+
+    return labels[type || ''] || type || 'Thông báo';
+}
+
+function getNotificationColor(type?: string) {
+    if (!type) return 'blue';
+
+    if (
+        type.includes('REJECTED') ||
+        type.includes('CANCELLED') ||
+        type.includes('NO_SHOW')
+    ) {
+        return 'red';
+    }
+
+    if (type.includes('APPROVED') || type.includes('FINALIZED')) {
+        return 'green';
+    }
+
+    if (type.includes('RESCHEDULED')) {
+        return 'orange';
+    }
+
+    if (type.includes('MEDICAL_RECORD')) {
+        return 'purple';
+    }
+
+    return 'blue';
+}
+
+function getNotificationIcon(type?: string): ReactNode {
+    if (!type) return <BellOutlined />;
+
+    if (type.includes('PRESCRIPTION')) {
+        return <MedicineBoxOutlined />;
+    }
+
+    if (type.includes('MEDICAL_RECORD')) {
+        return <FileDoneOutlined />;
+    }
+
+    if (type.includes('REJECTED') || type.includes('CANCELLED')) {
+        return <CloseCircleOutlined />;
+    }
+
+    if (type.includes('APPROVED') || type.includes('FINALIZED')) {
+        return <CheckCircleOutlined />;
+    }
+
+    if (type.includes('NO_SHOW') || type.includes('AI_SAFETY')) {
+        return <ExclamationCircleOutlined />;
+    }
+
+    if (type.includes('APPOINTMENT')) {
+        return <CalendarOutlined />;
+    }
+
+    return <BellOutlined />;
+}
+
+function getNotificationHref(item: AppNotification, isPatient: boolean) {
+    const entityType = item.entityType?.toUpperCase();
+    const type = item.type?.toUpperCase();
+
+    if (entityType === 'APPOINTMENT_REQUEST') {
+        return isPatient
+            ? '/dashboard/patient/appointment-requests'
+            : '/dashboard/receptionist/requests';
+    }
+
+    if (entityType === 'APPOINTMENT') {
+        return isPatient
+            ? '/dashboard/patient/appointments'
+            : '/dashboard/receptionist/appointments';
+    }
+
+    if (entityType === 'MEDICAL_RECORD' || type === 'MEDICAL_RECORD_COMPLETED') {
+        return isPatient
+            ? '/dashboard/patient/medical-records'
+            : '/dashboard/doctor/cases';
+    }
+
+    if (entityType === 'PRESCRIPTION' || type?.includes('PRESCRIPTION')) {
+        return isPatient
+            ? '/dashboard/patient/prescriptions'
+            : '/dashboard/doctor/prescriptions';
+    }
+
+    return '/dashboard/notifications';
+}
+
+function NotificationCard({
+    item,
+    isPatient,
+    onRead,
+}: {
+    item: AppNotification;
+    isPatient: boolean;
+    onRead: (id: string) => Promise<void>;
+}) {
+    const href = getNotificationHref(item, isPatient);
+
+    return (
+        <List.Item className={dashboardStyles.cleanListItem}>
+            <List.Item.Meta
+                avatar={
+                    <Badge dot={!item.read}>
+                        <div
+                            style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 14,
+                                display: 'grid',
+                                placeItems: 'center',
+                                background: item.read
+                                    ? 'rgba(106, 124, 122, 0.10)'
+                                    : 'rgba(25, 182, 164, 0.14)',
+                                color: item.read ? '#6a7c7a' : '#119c8d',
+                                fontSize: 20,
+                            }}
+                        >
+                            {getNotificationIcon(item.type)}
+                        </div>
+                    </Badge>
+                }
+                title={
+                    <div className={dashboardStyles.listTitle}>
+                        <span>
+                            <strong>{item.title}</strong>
+                        </span>
+
+                        <Space wrap>
+                            <Tag color={getNotificationColor(item.type)}>
+                                {getNotificationLabel(item.type)}
+                            </Tag>
+
+                            <StatusTag value={item.read ? 'Đã đọc' : 'Mới'} />
+                        </Space>
+                    </div>
+                }
+                description={
+                    <div>
+                        <p>{item.message || 'Không có nội dung.'}</p>
+
+                        <p style={{ color: '#6a7c7a' }}>
+                            {formatDateTime(item.createdAt)}
+                        </p>
+                    </div>
+                }
+            />
+
+            <Space wrap>
+                {!item.read && (
+                    <Button type="link" onClick={() => onRead(item.id)}>
+                        Đánh dấu đã đọc
+                    </Button>
+                )}
+
+                <Button href={href} type="primary" ghost>
+                    Mở chi tiết
+                </Button>
+            </Space>
+        </List.Item>
+    );
+}
+
 export default function NotificationsPage() {
     const { session, loading: authLoading } = useAuthSession();
 
@@ -25,12 +229,19 @@ export default function NotificationsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const isPatient = hasRole(session, 'PATIENT');
+
+    const unreadCount = useMemo(
+        () => items.filter((item) => !item.read).length,
+        [items],
+    );
+
     const loadNotifications = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            const page = await getMyNotifications();
+            const page = await getMyNotifications(50);
             setItems(page.content || []);
         } catch (err) {
             setError(
@@ -51,8 +262,11 @@ export default function NotificationsPage() {
 
     const handleRead = async (id: string) => {
         try {
-            await markNotificationAsRead(id);
-            await loadNotifications();
+            const updated = await markNotificationAsRead(id);
+
+            setItems((current) =>
+                current.map((item) => (item.id === id ? updated : item)),
+            );
         } catch {
             message.error('Không thể đánh dấu đã đọc.');
         }
@@ -61,8 +275,15 @@ export default function NotificationsPage() {
     const handleReadAll = async () => {
         try {
             await markAllNotificationsAsRead();
+
+            setItems((current) =>
+                current.map((item) => ({
+                    ...item,
+                    read: true,
+                })),
+            );
+
             message.success('Đã đánh dấu tất cả là đã đọc.');
-            await loadNotifications();
         } catch {
             message.error('Không thể đánh dấu tất cả.');
         }
@@ -72,32 +293,32 @@ export default function NotificationsPage() {
         return <ClinicalPageState loading>Loading</ClinicalPageState>;
     }
 
-    if (hasRole(session, 'PATIENT')) {
+    if (isPatient) {
         return (
             <PatientPortalFrame session={session}>
                 <section className={portalStyles.hero}>
                     <div>
                         <div className={portalStyles.heroKicker}>
-                            Notifications
+                            Notification center
                         </div>
+
                         <h1 className={portalStyles.heroTitle}>
                             Thông báo của tôi
                         </h1>
+
                         <p className={portalStyles.heroDescription}>
-                            Theo dõi các cập nhật về yêu cầu đặt lịch, lịch hẹn,
-                            bệnh án, đơn thuốc và những thay đổi quan trọng từ
-                            phòng khám.
+                            Theo dõi cập nhật về yêu cầu đặt lịch, lịch hẹn,
+                            kết quả khám và đơn thuốc. Các thông báo quan trọng
+                            sẽ được chuyển đến đây ngay khi hệ thống xử lý.
                         </p>
                     </div>
 
                     <article className={portalStyles.heroCard}>
-                        <span>Thông báo mới</span>
-                        <strong>
-                            {items.filter((item) => !item.read).length}
-                        </strong>
+                        <span>Thông báo chưa đọc</span>
+                        <strong>{unreadCount}</strong>
                         <p>
-                            Bạn có thể đánh dấu từng thông báo hoặc toàn bộ là
-                            đã đọc.
+                            Bấm vào chuông ở góc trên để xem nhanh, hoặc xem đầy
+                            đủ tại trang này.
                         </p>
                     </article>
                 </section>
@@ -108,13 +329,22 @@ export default function NotificationsPage() {
                 >
                     <div className={portalStyles.panelHeader}>
                         <div>
-                            <span>Notification center</span>
-                            <h2>Cập nhật gần đây</h2>
+                            <span>Cập nhật gần đây</span>
+                            <h2>Danh sách thông báo</h2>
                         </div>
 
-                        <Button onClick={handleReadAll}>
-                            Đánh dấu tất cả đã đọc
-                        </Button>
+                        <Space wrap>
+                            <Button onClick={loadNotifications}>
+                                Làm mới
+                            </Button>
+
+                            <Button
+                                disabled={unreadCount === 0}
+                                onClick={handleReadAll}
+                            >
+                                Đánh dấu tất cả đã đọc
+                            </Button>
+                        </Space>
                     </div>
 
                     <ClinicalPageState
@@ -125,7 +355,10 @@ export default function NotificationsPage() {
                         emptyDescription="Các cập nhật quan trọng sẽ hiển thị tại đây."
                     >
                         {items.map((item) => (
-                            <article key={item.id} className={portalStyles.listCard}>
+                            <article
+                                key={item.id}
+                                className={portalStyles.listCard}
+                            >
                                 <div className={portalStyles.listTitle}>
                                     <strong>
                                         {!item.read && (
@@ -134,9 +367,21 @@ export default function NotificationsPage() {
                                         {item.title}
                                     </strong>
 
-                                    <StatusTag
-                                        value={item.read ? 'Đã đọc' : 'Mới'}
-                                    />
+                                    <Space wrap>
+                                        <Tag
+                                            color={getNotificationColor(
+                                                item.type,
+                                            )}
+                                        >
+                                            {getNotificationLabel(item.type)}
+                                        </Tag>
+
+                                        <StatusTag
+                                            value={
+                                                item.read ? 'Đã đọc' : 'Mới'
+                                            }
+                                        />
+                                    </Space>
                                 </div>
 
                                 <p className={portalStyles.muted}>
@@ -144,22 +389,32 @@ export default function NotificationsPage() {
                                 </p>
 
                                 <p className={portalStyles.muted}>
-                                    {item.type} ·{' '}
-                                    {item.createdAt
-                                        ? new Date(
-                                            item.createdAt,
-                                        ).toLocaleString('vi-VN')
-                                        : 'Chưa rõ thời gian'}
+                                    {formatDateTime(item.createdAt)}
                                 </p>
 
-                                {!item.read && (
+                                <Space wrap>
+                                    {!item.read && (
+                                        <Button
+                                            type="link"
+                                            onClick={() =>
+                                                handleRead(item.id)
+                                            }
+                                        >
+                                            Đánh dấu đã đọc
+                                        </Button>
+                                    )}
+
                                     <Button
-                                        type="link"
-                                        onClick={() => handleRead(item.id)}
+                                        href={getNotificationHref(
+                                            item,
+                                            true,
+                                        )}
+                                        type="primary"
+                                        ghost
                                     >
-                                        Đánh dấu đã đọc
+                                        Mở chi tiết
                                     </Button>
-                                )}
+                                </Space>
                             </article>
                         ))}
                     </ClinicalPageState>
@@ -172,7 +427,7 @@ export default function NotificationsPage() {
         <DashboardFrame
             session={session}
             title="Thông báo"
-            subtitle="Theo dõi các cập nhật liên quan đến lịch hẹn, bệnh án và đơn thuốc"
+            subtitle="Theo dõi các cập nhật liên quan đến lịch hẹn, bệnh án, đơn thuốc và vận hành"
         >
             <ClinicalPageState loading={loading} error={error}>
                 <Card className={dashboardStyles.detailCard}>
@@ -180,11 +435,24 @@ export default function NotificationsPage() {
                         <div>
                             <span>Notification Center</span>
                             <h2>Thông báo của tôi</h2>
+                            <p>
+                                Các thông báo chưa đọc sẽ được đánh dấu nổi bật.
+                                Bấm “Mở chi tiết” để đi đúng khu vực xử lý.
+                            </p>
                         </div>
 
-                        <Button onClick={handleReadAll}>
-                            Đánh dấu tất cả đã đọc
-                        </Button>
+                        <Space wrap>
+                            <Button onClick={loadNotifications}>
+                                Làm mới
+                            </Button>
+
+                            <Button
+                                disabled={unreadCount === 0}
+                                onClick={handleReadAll}
+                            >
+                                Đánh dấu tất cả đã đọc
+                            </Button>
+                        </Space>
                     </div>
 
                     {items.length === 0 ? (
@@ -196,61 +464,12 @@ export default function NotificationsPage() {
                         <List
                             dataSource={items}
                             renderItem={(item) => (
-                                <List.Item
-                                    className={dashboardStyles.cleanListItem}
-                                >
-                                    <List.Item.Meta
-                                        title={
-                                            <div
-                                                className={
-                                                    dashboardStyles.listTitle
-                                                }
-                                            >
-                                                <span>
-                                                    {!item.read && (
-                                                        <Badge status="processing" />
-                                                    )}{' '}
-                                                    <strong>{item.title}</strong>
-                                                </span>
-
-                                                <StatusTag
-                                                    value={
-                                                        item.read
-                                                            ? 'Đã đọc'
-                                                            : 'Mới'
-                                                    }
-                                                />
-                                            </div>
-                                        }
-                                        description={
-                                            <div>
-                                                <p>
-                                                    {item.message ||
-                                                        'Không có nội dung.'}
-                                                </p>
-                                                <p>
-                                                    {item.type} ·{' '}
-                                                    {item.createdAt
-                                                        ? new Date(
-                                                            item.createdAt,
-                                                        ).toLocaleString(
-                                                            'vi-VN',
-                                                        )
-                                                        : 'Chưa rõ thời gian'}
-                                                </p>
-                                            </div>
-                                        }
-                                    />
-
-                                    {!item.read && (
-                                        <Button
-                                            type="link"
-                                            onClick={() => handleRead(item.id)}
-                                        >
-                                            Đã đọc
-                                        </Button>
-                                    )}
-                                </List.Item>
+                                <NotificationCard
+                                    key={item.id}
+                                    item={item}
+                                    isPatient={false}
+                                    onRead={handleRead}
+                                />
                             )}
                         />
                     )}

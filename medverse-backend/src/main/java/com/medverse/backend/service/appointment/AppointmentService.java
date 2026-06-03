@@ -34,254 +34,273 @@ import java.util.UUID;
 @Slf4j
 public class AppointmentService {
 
-    private final AppointmentRepository appointmentRepository;
-    private final AppointmentRequestRepository requestRepository;
-    private final WorkSlotRepository workSlotRepository;
-    private final AppointmentMapper appointmentMapper;
-    private final AuditService auditService;
-    private final NotificationService notificationService;
+        private final AppointmentRepository appointmentRepository;
+        private final AppointmentRequestRepository requestRepository;
+        private final WorkSlotRepository workSlotRepository;
+        private final AppointmentMapper appointmentMapper;
+        private final AuditService auditService;
+        private final NotificationService notificationService;
 
-    public AppointmentDto getAppointmentById(UUID id, User currentUser) {
-        Appointment appointment = appointmentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", id));
+        public AppointmentDto getAppointmentById(UUID id, User currentUser) {
+                Appointment appointment = appointmentRepository.findById(id)
+                                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", id));
 
-        boolean canReadAny = hasAuthority(currentUser, "APPOINTMENT:READ_ANY");
-        boolean isOwner = appointment.getPatient() != null
-                && appointment.getPatient().getId().equals(currentUser.getId());
+                boolean canReadAny = hasAuthority(currentUser, "APPOINTMENT:READ_ANY");
+                boolean isOwner = appointment.getPatient() != null
+                                && appointment.getPatient().getId().equals(currentUser.getId());
 
-        boolean isDoctor = appointment.getDoctor() != null
-                && appointment.getDoctor().getId().equals(currentUser.getId());
+                boolean isDoctor = appointment.getDoctor() != null
+                                && appointment.getDoctor().getId().equals(currentUser.getId());
 
-        if (!canReadAny && !isOwner && !isDoctor) {
-            throw new IllegalStateException("You are not authorized to view this appointment.");
+                if (!canReadAny && !isOwner && !isDoctor) {
+                        throw new IllegalStateException("You are not authorized to view this appointment.");
+                }
+
+                return appointmentMapper.toDto(appointment);
         }
 
-        return appointmentMapper.toDto(appointment);
-    }
+        public Page<AppointmentDto> searchAppointments(
+                        UUID doctorId, UUID patientId, AppointmentStatus status,
+                        OffsetDateTime from, OffsetDateTime to, Pageable pageable) {
 
-    public Page<AppointmentDto> searchAppointments(
-            UUID doctorId, UUID patientId, AppointmentStatus status,
-            OffsetDateTime from, OffsetDateTime to, Pageable pageable) {
-
-        return appointmentRepository.searchAppointments(doctorId, patientId, status, from, to, pageable)
-                .map(appointmentMapper::toDto);
-    }
-
-    @Transactional
-    public AppointmentDto createAppointmentFromRequest(UUID requestId, UUID workSlotId) {
-        log.info("Approving request {} with slot {}", requestId, workSlotId);
-
-        AppointmentRequest request = requestRepository.findById(requestId)
-                .orElseThrow(() -> new ResourceNotFoundException("Request", "id", requestId));
-
-        WorkSlot slot = workSlotRepository.findById(workSlotId)
-                .orElseThrow(() -> new ResourceNotFoundException("WorkSlot", "id", workSlotId));
-
-        if (request.getStatus() != AppointmentRequestStatus.PENDING) {
-            throw new IllegalStateException("Request is already processed.");
-        }
-        if (slot.getStatus() != WorkSlotStatus.AVAILABLE) {
-            throw new DuplicateResourceException("WorkSlot", "status", "Slot is already booked or blocked.");
+                return appointmentRepository.searchAppointments(doctorId, patientId, status, from, to, pageable)
+                                .map(appointmentMapper::toDto);
         }
 
-        if (request.getDoctor() != null && !request.getDoctor().getId().equals(slot.getDoctor().getId())) {
-            throw new IllegalArgumentException("Selected slot does not belong to the requested doctor.");
+        @Transactional
+        public AppointmentDto createAppointmentFromRequest(UUID requestId, UUID workSlotId) {
+                log.info("Approving request {} with slot {}", requestId, workSlotId);
+
+                AppointmentRequest request = requestRepository.findById(requestId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Request", "id", requestId));
+
+                WorkSlot slot = workSlotRepository.findById(workSlotId)
+                                .orElseThrow(() -> new ResourceNotFoundException("WorkSlot", "id", workSlotId));
+
+                if (request.getStatus() != AppointmentRequestStatus.PENDING) {
+                        throw new IllegalStateException("Request is already processed.");
+                }
+                if (slot.getStatus() != WorkSlotStatus.AVAILABLE) {
+                        throw new DuplicateResourceException("WorkSlot", "status",
+                                        "Slot is already booked or blocked.");
+                }
+
+                if (request.getDoctor() != null && !request.getDoctor().getId().equals(slot.getDoctor().getId())) {
+                        throw new IllegalArgumentException("Selected slot does not belong to the requested doctor.");
+                }
+
+                boolean isOverlapping = appointmentRepository.existsOverlappingAppointment(
+                                slot.getDoctor().getId(), slot.getStartTime(), slot.getEndTime());
+                if (isOverlapping) {
+                        throw new DuplicateResourceException("Appointment", "time",
+                                        "Doctor already has an appointment at this time.");
+                }
+
+                request.setStatus(AppointmentRequestStatus.APPROVED);
+                request.setDoctor(slot.getDoctor());
+                requestRepository.save(request);
+
+                slot.setStatus(WorkSlotStatus.BOOKED);
+                workSlotRepository.save(slot);
+
+                Appointment appointment = Appointment.builder()
+                                .patient(request.getPatient())
+                                .doctor(slot.getDoctor())
+                                .request(request)
+                                .workSlot(slot)
+                                .startTime(slot.getStartTime())
+                                .endTime(slot.getEndTime())
+                                .status(AppointmentStatus.SCHEDULED)
+                                .type(request.getType())
+                                .build();
+
+                Appointment savedAppointment = appointmentRepository.save(appointment);
+
+                auditService.record(
+                                "APPROVE_APPOINTMENT",
+                                "APPOINTMENT",
+                                savedAppointment.getId().toString(),
+                                "Approved request " + requestId + " with slot " + workSlotId);
+
+                notificationService.notify(
+                                savedAppointment.getPatient(),
+                                NotificationType.APPOINTMENT_REQUEST_APPROVED,
+                                "Yêu cầu đặt lịch đã được duyệt",
+                                "Lịch hẹn của bạn đã được tạo vào " + savedAppointment.getStartTime() + ".",
+                                "APPOINTMENT",
+                                savedAppointment.getId().toString());
+
+                notificationService.notify(
+                                savedAppointment.getDoctor(),
+                                NotificationType.APPOINTMENT_REQUEST_APPROVED,
+                                "Có lịch khám mới",
+                                "Bạn có lịch khám mới với bệnh nhân " + savedAppointment.getPatient().getEmail() + ".",
+                                "APPOINTMENT",
+                                savedAppointment.getId().toString());
+
+                return appointmentMapper.toDto(savedAppointment);
         }
 
-        boolean isOverlapping = appointmentRepository.existsOverlappingAppointment(
-                slot.getDoctor().getId(), slot.getStartTime(), slot.getEndTime());
-        if (isOverlapping) {
-            throw new DuplicateResourceException("Appointment", "time",
-                    "Doctor already has an appointment at this time.");
+        @Transactional
+        public void cancelAppointment(UUID appointmentId, String reason, User currentUser) {
+                Appointment appointment = appointmentRepository.findById(appointmentId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
+
+                boolean canWriteAny = hasAuthority(currentUser, "APPOINTMENT:WRITE_ANY");
+                boolean isOwner = appointment.getPatient() != null
+                                && appointment.getPatient().getId().equals(currentUser.getId());
+
+                if (!canWriteAny && !isOwner) {
+                        throw new IllegalStateException("You are not authorized to cancel this appointment.");
+                }
+
+                if (appointment.getStatus() == AppointmentStatus.CANCELLED
+                                || appointment.getStatus() == AppointmentStatus.COMPLETED) {
+                        throw new IllegalStateException(
+                                        "Cannot cancel an appointment that is already completed or cancelled.");
+                }
+
+                appointment.setStatus(AppointmentStatus.CANCELLED);
+                appointment.setCancellationReason(reason);
+                appointmentRepository.save(appointment);
+
+                if (appointment.getWorkSlot() != null) {
+                        WorkSlot slot = appointment.getWorkSlot();
+                        slot.setStatus(WorkSlotStatus.AVAILABLE);
+                        workSlotRepository.save(slot);
+                }
+
+                auditService.record(
+                                "CANCEL_APPOINTMENT",
+                                "APPOINTMENT",
+                                appointmentId.toString(),
+                                "Reason: " + reason);
+
+                notificationService.notify(
+                                appointment.getPatient(),
+                                NotificationType.APPOINTMENT_CANCELLED,
+                                "Lịch hẹn đã bị hủy",
+                                "Lý do: " + reason,
+                                "APPOINTMENT",
+                                appointment.getId().toString());
+
+                notificationService.notify(
+                                appointment.getDoctor(),
+                                NotificationType.APPOINTMENT_CANCELLED,
+                                "Một lịch khám đã bị hủy",
+                                "Lý do: " + reason,
+                                "APPOINTMENT",
+                                appointment.getId().toString());
         }
 
-        request.setStatus(AppointmentRequestStatus.APPROVED);
-        request.setDoctor(slot.getDoctor());
-        requestRepository.save(request);
+        @Transactional
+        public void markNoShow(UUID appointmentId) {
+                Appointment appointment = appointmentRepository.findById(appointmentId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
 
-        slot.setStatus(WorkSlotStatus.BOOKED);
-        workSlotRepository.save(slot);
+                appointment.setStatus(AppointmentStatus.NO_SHOW);
+                appointmentRepository.save(appointment);
 
-        Appointment appointment = Appointment.builder()
-                .patient(request.getPatient())
-                .doctor(slot.getDoctor())
-                .request(request)
-                .workSlot(slot)
-                .startTime(slot.getStartTime())
-                .endTime(slot.getEndTime())
-                .status(AppointmentStatus.SCHEDULED)
-                .type(request.getType())
-                .build();
+                auditService.record(
+                                "MARK_NO_SHOW",
+                                "APPOINTMENT",
+                                appointmentId.toString(),
+                                "Patient did not show up");
 
-        Appointment savedAppointment = appointmentRepository.save(appointment);
+                notificationService.notify(
+                                appointment.getPatient(),
+                                NotificationType.APPOINTMENT_NO_SHOW,
+                                "Lịch hẹn được đánh dấu vắng mặt",
+                                "Bạn đã được ghi nhận là không đến lịch hẹn lúc " + appointment.getStartTime() + ".",
+                                "APPOINTMENT",
+                                appointment.getId().toString());
 
-        auditService.record(
-                "APPROVE_APPOINTMENT",
-                "APPOINTMENT",
-                savedAppointment.getId().toString(),
-                "Approved request " + requestId + " with slot " + workSlotId);
-
-        notificationService.notify(
-                savedAppointment.getPatient(),
-                NotificationType.APPOINTMENT_REQUEST_APPROVED,
-                "Yêu cầu đặt lịch đã được duyệt",
-                "Lịch hẹn của bạn đã được tạo vào " + savedAppointment.getStartTime() + ".",
-                "APPOINTMENT",
-                savedAppointment.getId().toString());
-
-        notificationService.notify(
-                savedAppointment.getDoctor(),
-                NotificationType.APPOINTMENT_REQUEST_APPROVED,
-                "Có lịch khám mới",
-                "Bạn có lịch khám mới với bệnh nhân " + savedAppointment.getPatient().getEmail() + ".",
-                "APPOINTMENT",
-                savedAppointment.getId().toString());
-
-        return appointmentMapper.toDto(savedAppointment);
-    }
-
-    @Transactional
-    public void cancelAppointment(UUID appointmentId, String reason, User currentUser) {
-        Appointment appointment = appointmentRepository.findById(appointmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
-
-        boolean canWriteAny = hasAuthority(currentUser, "APPOINTMENT:WRITE_ANY");
-        boolean isOwner = appointment.getPatient() != null
-                && appointment.getPatient().getId().equals(currentUser.getId());
-
-        if (!canWriteAny && !isOwner) {
-            throw new IllegalStateException("You are not authorized to cancel this appointment.");
+                notificationService.notify(
+                                appointment.getDoctor(),
+                                NotificationType.APPOINTMENT_NO_SHOW,
+                                "Bệnh nhân vắng mặt",
+                                "Bệnh nhân " + appointment.getPatient().getEmail() + " không đến lịch khám lúc "
+                                                + appointment.getStartTime() + ".",
+                                "APPOINTMENT",
+                                appointment.getId().toString());
         }
 
-        if (appointment.getStatus() == AppointmentStatus.CANCELLED
-                || appointment.getStatus() == AppointmentStatus.COMPLETED) {
-            throw new IllegalStateException("Cannot cancel an appointment that is already completed or cancelled.");
+        @Transactional
+        public AppointmentDto rescheduleAppointment(UUID appointmentId, UUID newWorkSlotId) {
+                Appointment appointment = appointmentRepository.findById(appointmentId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
+
+                if (appointment.getStatus() == AppointmentStatus.CANCELLED
+                                || appointment.getStatus() == AppointmentStatus.COMPLETED) {
+                        throw new IllegalStateException("Cannot reschedule a finished or cancelled appointment.");
+                }
+
+                WorkSlot newSlot = workSlotRepository.findById(newWorkSlotId)
+                                .orElseThrow(() -> new ResourceNotFoundException("WorkSlot", "id", newWorkSlotId));
+
+                if (newSlot.getStatus() != WorkSlotStatus.AVAILABLE) {
+                        throw new DuplicateResourceException("WorkSlot", "status", "The new slot is not available.");
+                }
+
+                if (appointment.getWorkSlot() != null) {
+                        WorkSlot oldSlot = appointment.getWorkSlot();
+                        oldSlot.setStatus(WorkSlotStatus.AVAILABLE);
+                        workSlotRepository.save(oldSlot);
+                }
+
+                newSlot.setStatus(WorkSlotStatus.BOOKED);
+                workSlotRepository.save(newSlot);
+
+                appointment.setDoctor(newSlot.getDoctor());
+                appointment.setWorkSlot(newSlot);
+                appointment.setStartTime(newSlot.getStartTime());
+                appointment.setEndTime(newSlot.getEndTime());
+
+                if (appointment.getStatus() == AppointmentStatus.SCHEDULED) {
+                        appointment.setStatus(AppointmentStatus.CONFIRMED);
+                }
+
+                Appointment updatedAppointment = appointmentRepository.save(appointment);
+
+                auditService.record(
+                                "RESCHEDULE_APPOINTMENT",
+                                "APPOINTMENT",
+                                appointmentId.toString(),
+                                "Rescheduled to new slot: " + newWorkSlotId);
+
+                notificationService.notify(
+                                updatedAppointment.getPatient(),
+                                NotificationType.APPOINTMENT_RESCHEDULED,
+                                "Lịch hẹn đã được đổi giờ",
+                                "Lịch hẹn mới bắt đầu lúc " + updatedAppointment.getStartTime() + ".",
+                                "APPOINTMENT",
+                                updatedAppointment.getId().toString());
+
+                notificationService.notify(
+                                updatedAppointment.getDoctor(),
+                                NotificationType.APPOINTMENT_RESCHEDULED,
+                                "Lịch khám đã được đổi giờ",
+                                "Lịch khám mới bắt đầu lúc " + updatedAppointment.getStartTime() + ".",
+                                "APPOINTMENT",
+                                updatedAppointment.getId().toString());
+
+                return appointmentMapper.toDto(updatedAppointment);
         }
 
-        appointment.setStatus(AppointmentStatus.CANCELLED);
-        appointment.setCancellationReason(reason);
-        appointmentRepository.save(appointment);
-
-        if (appointment.getWorkSlot() != null) {
-            WorkSlot slot = appointment.getWorkSlot();
-            slot.setStatus(WorkSlotStatus.AVAILABLE);
-            workSlotRepository.save(slot);
+        public Page<AppointmentDto> getMyAppointments(User currentUser, Pageable pageable) {
+                return appointmentRepository
+                                .findByPatientIdOrderByStartTimeDesc(currentUser.getId(), pageable)
+                                .map(appointmentMapper::toDto);
         }
 
-        auditService.record(
-                "CANCEL_APPOINTMENT",
-                "APPOINTMENT",
-                appointmentId.toString(),
-                "Reason: " + reason);
+        private boolean hasAuthority(User user, String authority) {
+                if (user == null || user.getAuthorities() == null) {
+                        return false;
+                }
 
-        notificationService.notify(
-                appointment.getPatient(),
-                NotificationType.APPOINTMENT_CANCELLED,
-                "Lịch hẹn đã bị hủy",
-                "Lý do: " + reason,
-                "APPOINTMENT",
-                appointment.getId().toString());
-
-        notificationService.notify(
-                appointment.getDoctor(),
-                NotificationType.APPOINTMENT_CANCELLED,
-                "Một lịch khám đã bị hủy",
-                "Lý do: " + reason,
-                "APPOINTMENT",
-                appointment.getId().toString());
-    }
-
-    @Transactional
-    public void markNoShow(UUID appointmentId) {
-        Appointment appointment = appointmentRepository.findById(appointmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
-
-        appointment.setStatus(AppointmentStatus.NO_SHOW);
-        appointmentRepository.save(appointment);
-
-        auditService.record(
-                "MARK_NO_SHOW",
-                "APPOINTMENT",
-                appointmentId.toString(),
-                "Patient did not show up");
-    }
-
-    @Transactional
-    public AppointmentDto rescheduleAppointment(UUID appointmentId, UUID newWorkSlotId) {
-        Appointment appointment = appointmentRepository.findById(appointmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
-
-        if (appointment.getStatus() == AppointmentStatus.CANCELLED
-                || appointment.getStatus() == AppointmentStatus.COMPLETED) {
-            throw new IllegalStateException("Cannot reschedule a finished or cancelled appointment.");
+                return user.getAuthorities()
+                                .stream()
+                                .map(GrantedAuthority::getAuthority)
+                                .anyMatch(authority::equals);
         }
-
-        WorkSlot newSlot = workSlotRepository.findById(newWorkSlotId)
-                .orElseThrow(() -> new ResourceNotFoundException("WorkSlot", "id", newWorkSlotId));
-
-        if (newSlot.getStatus() != WorkSlotStatus.AVAILABLE) {
-            throw new DuplicateResourceException("WorkSlot", "status", "The new slot is not available.");
-        }
-
-        if (appointment.getWorkSlot() != null) {
-            WorkSlot oldSlot = appointment.getWorkSlot();
-            oldSlot.setStatus(WorkSlotStatus.AVAILABLE);
-            workSlotRepository.save(oldSlot);
-        }
-
-        newSlot.setStatus(WorkSlotStatus.BOOKED);
-        workSlotRepository.save(newSlot);
-
-        appointment.setDoctor(newSlot.getDoctor());
-        appointment.setWorkSlot(newSlot);
-        appointment.setStartTime(newSlot.getStartTime());
-        appointment.setEndTime(newSlot.getEndTime());
-
-        if (appointment.getStatus() == AppointmentStatus.SCHEDULED) {
-            appointment.setStatus(AppointmentStatus.CONFIRMED);
-        }
-
-        Appointment updatedAppointment = appointmentRepository.save(appointment);
-
-        auditService.record(
-                "RESCHEDULE_APPOINTMENT",
-                "APPOINTMENT",
-                appointmentId.toString(),
-                "Rescheduled to new slot: " + newWorkSlotId);
-
-        notificationService.notify(
-                updatedAppointment.getPatient(),
-                NotificationType.APPOINTMENT_RESCHEDULED,
-                "Lịch hẹn đã được đổi giờ",
-                "Lịch hẹn mới bắt đầu lúc " + updatedAppointment.getStartTime() + ".",
-                "APPOINTMENT",
-                updatedAppointment.getId().toString());
-
-        notificationService.notify(
-                updatedAppointment.getDoctor(),
-                NotificationType.APPOINTMENT_RESCHEDULED,
-                "Lịch khám đã được đổi giờ",
-                "Lịch khám mới bắt đầu lúc " + updatedAppointment.getStartTime() + ".",
-                "APPOINTMENT",
-                updatedAppointment.getId().toString());
-
-        return appointmentMapper.toDto(updatedAppointment);
-    }
-
-    public Page<AppointmentDto> getMyAppointments(User currentUser, Pageable pageable) {
-        return appointmentRepository
-                .findByPatientIdOrderByStartTimeDesc(currentUser.getId(), pageable)
-                .map(appointmentMapper::toDto);
-    }
-
-    private boolean hasAuthority(User user, String authority) {
-        if (user == null || user.getAuthorities() == null) {
-            return false;
-        }
-
-        return user.getAuthorities()
-                .stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(authority::equals);
-    }
 }
