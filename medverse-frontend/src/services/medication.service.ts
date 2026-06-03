@@ -1,18 +1,15 @@
 import { apiRequest } from '@/lib/api/http';
+import type { Medication } from '@/types/clinical';
+import type { PageResponse } from '@/types/pagination';
 
-export type Medication = {
-    id: string;
-    code: string;
-    name: string;
-    activeIngredient?: string;
-    atcCode?: string;
-    unit?: string;
-};
+const MEDICATION_SEARCH_ENDPOINT = '/v1/medications';
 
 export async function searchMedications(keyword = '') {
-    const res = await apiRequest<{
-        content: Medication[];
-    }>(`/v1/medications?keyword=${encodeURIComponent(keyword)}&size=20`);
+    const query = keyword.trim();
+
+    const res = await apiRequest<PageResponse<Medication>>(
+        `${MEDICATION_SEARCH_ENDPOINT}?keyword=${encodeURIComponent(query)}&size=20`,
+    );
 
     return res.data.content || [];
 }
