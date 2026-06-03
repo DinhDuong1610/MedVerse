@@ -35,6 +35,8 @@ services:
       - AI_SERVICE_BASE_URL=${AI_SERVICE_BASE_URL}
       - AI_TIMEOUT_MS=${AI_TIMEOUT_MS}
 
+      - DEMO_DATA_ENABLED=${DEMO_DATA_ENABLED}
+
   postgres:
     image: postgres:15-alpine
     container_name: medverse_postgres_db

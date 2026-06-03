@@ -2,7 +2,7 @@ import { apiRequest } from '@/lib/api/http';
 import type { Medication } from '@/types/clinical';
 import type { PageResponse } from '@/types/pagination';
 
-const MEDICATION_SEARCH_ENDPOINT = '/v1/medications';
+const MEDICATION_SEARCH_ENDPOINT = '/v1/inventory/medications';
 
 export async function searchMedications(keyword = '') {
     const query = keyword.trim();

@@ -51,6 +51,16 @@ const navByRole: Record<
     ],
     ADMIN: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
+        {
+            label: 'Kho thuốc',
+            href: '/dashboard/admin/inventory',
+            icon: <MedicineBoxOutlined />,
+        },
+        {
+            label: 'Nhập kho',
+            href: '/dashboard/admin/inventory/import',
+            icon: <FileProtectOutlined />,
+        },
     ],
 };
 
