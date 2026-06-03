@@ -222,3 +222,29 @@ export type AppointmentRequestCreatePayload = {
     type: 'ONLINE' | 'OFFLINE';
     symptoms?: string;
 };
+
+export type DirectorySpecialty = {
+    id: string;
+    code: string;
+    name: string;
+    description?: string;
+};
+
+export type DirectoryDoctor = {
+    userId: string;
+    doctorProfileId: string;
+
+    email?: string;
+    fullName?: string;
+    phoneNumber?: string;
+    gender?: string;
+
+    specialtyId?: string;
+    specialtyCode?: string;
+    specialtyName?: string;
+
+    licenseNumber?: string;
+    degree?: string;
+    experienceYears?: number;
+    bio?: string;
+};
