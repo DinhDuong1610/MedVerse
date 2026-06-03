@@ -26,7 +26,9 @@ export async function getAppointments(filter?: AppointmentFilter) {
 
     if (filter?.doctorId) params.set('doctorId', filter.doctorId);
     if (filter?.patientId) params.set('patientId', filter.patientId);
-    if (filter?.status) params.set('status', filter.status);
+    if (filter?.status && filter.status !== 'ALL') {
+        params.set('status', filter.status);
+    }
     if (filter?.from) params.set('from', filter.from);
     if (filter?.to) params.set('to', filter.to);
 
