@@ -148,3 +148,44 @@ export type AiAutocompleteResponse<T> = {
     results?: T[];
     data?: T[];
 };
+
+export type AppointmentRequestStatus =
+    | 'PENDING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'CANCELLED';
+
+export type AppointmentType = 'ONLINE' | 'OFFLINE';
+
+export type AppointmentRequest = {
+    id: string;
+    patientId: string;
+    patientName?: string;
+
+    doctorId?: string;
+    doctorName?: string;
+
+    specialtyId?: string;
+    specialtyName?: string;
+
+    desiredDate?: string;
+    desiredTime?: string;
+
+    type?: AppointmentType;
+    status: AppointmentRequestStatus;
+
+    symptoms?: string;
+    rejectionReason?: string;
+    createdAt?: string;
+};
+
+export type WorkSlotStatus = 'AVAILABLE' | 'BOOKED' | 'CANCELLED';
+
+export type WorkSlot = {
+    id: string;
+    doctorId: string;
+    doctorName?: string;
+    startTime: string;
+    endTime: string;
+    status: WorkSlotStatus;
+};

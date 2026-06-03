@@ -38,6 +38,16 @@ const navByRole: Record<
     ],
     RECEPTIONIST: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
+        {
+            label: 'Yêu cầu đặt lịch',
+            href: '/dashboard/receptionist/requests',
+            icon: <CalendarOutlined />,
+        },
+        {
+            label: 'Lịch hẹn',
+            href: '/dashboard/receptionist/appointments',
+            icon: <FileProtectOutlined />,
+        },
     ],
     ADMIN: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
