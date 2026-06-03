@@ -26,6 +26,7 @@ import StatusTag from '../../../_components/StatusTag';
 import { hasAnyPermission } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import { getAppointmentById } from '@/services/appointment.service';
+import ClinicalAiAssistPanel from './_components/ClinicalAiAssistPanel';
 import {
     addDiagnosis,
     completeMedicalRecord,
@@ -912,7 +913,29 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                             </>
                         )}
                     </Card>
+                    <ClinicalAiAssistPanel
+                        appointment={appointment}
+                        patientProfile={patientProfile}
+                        allergies={allergies}
+                        clinicalText={[
+                            recordForm.getFieldValue('chiefComplaint'),
+                            recordForm.getFieldValue('symptoms'),
+                            recordForm.getFieldValue('clinicalNote'),
+                            recordForm.getFieldValue('diagnosisText'),
+                            recordForm.getFieldValue('treatmentPlan'),
+                        ]
+                            .filter(Boolean)
+                            .join('\n')}
+                        onPickDiagnosis={(item) => {
+                            diagnosisForm.setFieldsValue({
+                                diagnosisText: item.diagnosisText,
+                                icdCode: item.icdCode,
+                                icdDisplay: item.icdDisplay,
+                            });
 
+                            recordForm.setFieldValue('diagnosisText', item.diagnosisText);
+                        }}
+                    />
                     <Card className={styles.detailCard} title="Chẩn đoán ICD">
                         <DiagnosisAiSuggest
                             onPick={(item) => {

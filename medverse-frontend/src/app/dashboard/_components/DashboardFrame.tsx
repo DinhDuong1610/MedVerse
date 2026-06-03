@@ -114,12 +114,6 @@ const NAV_ITEMS: NavItem[] = [
         icon: <MedicineBoxOutlined />,
         anyPermissions: ['PRESCRIPTION:READ_ANY', 'PRESCRIPTION:WRITE'],
     },
-    {
-        label: 'AI Clinical',
-        href: '/dashboard/doctor/ai',
-        icon: <RobotOutlined />,
-        anyPermissions: ['EHR:WRITE', 'ADMIN_PANEL:ACCESS'],
-    },
 
     /**
      * Receptionist scheduling features
