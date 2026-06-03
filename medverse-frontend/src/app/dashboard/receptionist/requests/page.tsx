@@ -1,21 +1,22 @@
 'use client';
 
 import {
-    Alert,
     Button,
     Card,
+    Form,
+    Input,
     List,
     Modal,
     Select,
-    Skeleton,
     Space,
-    Tag,
-    Typography,
     message,
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import DashboardFrame from '../../_components/DashboardFrame';
 import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
+import ClinicalPageState from '../../_components/ClinicalPageState';
+import RoleGuardState from '../../_components/RoleGuardState';
+import StatusTag from '../../_components/StatusTag';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import {
     approveAppointmentRequest,
@@ -30,74 +31,91 @@ import type {
 } from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
 
-const statusOptions = [
-    { label: 'Tất cả', value: 'ALL' },
-    { label: 'Đang chờ', value: 'PENDING' },
-    { label: 'Đã duyệt', value: 'APPROVED' },
-    { label: 'Đã từ chối', value: 'REJECTED' },
-    { label: 'Đã hủy', value: 'CANCELLED' },
-];
-
-const statusColor: Record<string, string> = {
-    PENDING: 'gold',
-    APPROVED: 'green',
-    REJECTED: 'red',
-    CANCELLED: 'default',
+type RejectFormValues = {
+    reason: string;
 };
 
 export default function ReceptionistRequestsPage() {
     const { session, loading: authLoading } = useAuthSession();
 
+    const [rejectForm] = Form.useForm<RejectFormValues>();
+
+    const [requests, setRequests] = useState<AppointmentRequest[]>([]);
     const [status, setStatus] = useState<AppointmentRequestStatus | 'ALL'>(
         'PENDING',
     );
-    const [requests, setRequests] = useState<AppointmentRequest[]>([]);
-    const [slots, setSlots] = useState<WorkSlot[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const [approveOpen, setApproveOpen] = useState(false);
+    const [rejectOpen, setRejectOpen] = useState(false);
+
     const [selectedRequest, setSelectedRequest] =
         useState<AppointmentRequest | null>(null);
-    const [selectedSlotId, setSelectedSlotId] = useState<string>();
-    const [rejectingRequest, setRejectingRequest] =
-        useState<AppointmentRequest | null>(null);
-    const [rejectReason, setRejectReason] = useState('');
+    const [availableSlots, setAvailableSlots] = useState<WorkSlot[]>([]);
+    const [selectedSlotId, setSelectedSlotId] = useState<string | undefined>();
 
-    const [loading, setLoading] = useState(true);
-    const [slotLoading, setSlotLoading] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-
-    const loadRequests = async () => {
+    const loadRequests = async (nextStatus = status) => {
         try {
             setLoading(true);
+            setError(null);
 
-            const page = await getAppointmentRequests(status);
+            const page = await getAppointmentRequests(nextStatus);
             setRequests(page.content || []);
+        } catch (err) {
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể tải danh sách yêu cầu đặt lịch.',
+            );
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (session?.role === 'RECEPTIONIST') {
-            loadRequests();
+        if (!session) return;
+
+        if (session.role !== 'RECEPTIONIST') {
+            setLoading(false);
+            return;
         }
-    }, [session, status]);
+
+        loadRequests();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session]);
+
+    const handleStatusChange = (value: AppointmentRequestStatus | 'ALL') => {
+        setStatus(value);
+        loadRequests(value);
+    };
 
     const openApproveModal = async (request: AppointmentRequest) => {
-        setSelectedRequest(request);
-        setSelectedSlotId(undefined);
-        setSlots([]);
-
         if (!request.doctorId) {
-            message.warning('Request chưa có bác sĩ, không thể lấy slot.');
+            message.warning(
+                'Yêu cầu này chưa có bác sĩ cụ thể. Hãy chọn request có doctorId để duyệt slot.',
+            );
             return;
         }
 
         try {
-            setSlotLoading(true);
+            setSelectedRequest(request);
+            setSelectedSlotId(undefined);
+            setAvailableSlots([]);
+            setApproveOpen(true);
+            setActionLoading(request.id);
 
-            const data = await getAvailableWorkSlots(request.doctorId);
-            setSlots(data);
+            const slots = await getAvailableWorkSlots(request.doctorId);
+            setAvailableSlots(slots);
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể tải slot khả dụng.',
+            );
         } finally {
-            setSlotLoading(false);
+            setActionLoading(null);
         }
     };
 
@@ -108,216 +126,291 @@ export default function ReceptionistRequestsPage() {
         }
 
         try {
-            setSubmitting(true);
+            setActionLoading(selectedRequest.id);
 
             await approveAppointmentRequest(selectedRequest.id, selectedSlotId);
-            message.success('Đã duyệt yêu cầu và tạo lịch hẹn.');
 
+            message.success('Đã duyệt yêu cầu và tạo lịch hẹn.');
+            setApproveOpen(false);
             setSelectedRequest(null);
             setSelectedSlotId(undefined);
+            setAvailableSlots([]);
             await loadRequests();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể duyệt yêu cầu.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể duyệt yêu cầu.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
         }
     };
 
-    const handleReject = async () => {
-        if (!rejectingRequest) return;
+    const openRejectModal = (request: AppointmentRequest) => {
+        setSelectedRequest(request);
+        rejectForm.resetFields();
+        setRejectOpen(true);
+    };
 
-        if (!rejectReason.trim()) {
-            message.warning('Vui lòng nhập lý do từ chối.');
-            return;
-        }
+    const handleReject = async (values: RejectFormValues) => {
+        if (!selectedRequest) return;
 
         try {
-            setSubmitting(true);
+            setActionLoading(selectedRequest.id);
 
-            await rejectAppointmentRequest(rejectingRequest.id, rejectReason);
+            await rejectAppointmentRequest(selectedRequest.id, values.reason);
+
             message.success('Đã từ chối yêu cầu.');
-
-            setRejectingRequest(null);
-            setRejectReason('');
+            setRejectOpen(false);
+            setSelectedRequest(null);
             await loadRequests();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể từ chối yêu cầu.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể từ chối yêu cầu.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
         }
     };
 
-    const slotOptions = useMemo(
-        () =>
-            slots.map((slot) => ({
-                value: slot.id,
-                label: `${new Date(slot.startTime).toLocaleString('vi-VN')} - ${new Date(
-                    slot.endTime,
-                ).toLocaleTimeString('vi-VN')}`,
-            })),
-        [slots],
-    );
-
-    if (authLoading || !session || loading) {
-        return <Skeleton active paragraph={{ rows: 8 }} />;
+    if (authLoading || !session) {
+        return <ClinicalPageState loading>Loading</ClinicalPageState>;
     }
 
     return (
         <DashboardFrame
             session={session}
             title="Yêu cầu đặt lịch"
-            subtitle="Duyệt yêu cầu khám và gán slot cho bác sĩ"
+            subtitle="Duyệt hoặc từ chối yêu cầu khám của bệnh nhân"
         >
-            <div className={styles.detailGrid}>
-                <Card className={styles.detailCard}>
-                    <div className={styles.panelHeader}>
-                        <div>
-                            <span>Reception desk</span>
-                            <h2>Danh sách request</h2>
+            <RoleGuardState session={session} allow={['RECEPTIONIST']}>
+                <ClinicalPageState loading={loading} error={error}>
+                    <Card className={styles.detailCard}>
+                        <div className={styles.panelHeader}>
+                            <div>
+                                <span>Appointment requests</span>
+                                <h2>Danh sách yêu cầu đặt lịch</h2>
+                            </div>
+
+                            <Select
+                                value={status}
+                                onChange={handleStatusChange}
+                                style={{ width: 180 }}
+                                options={[
+                                    { value: 'ALL', label: 'Tất cả' },
+                                    { value: 'PENDING', label: 'PENDING' },
+                                    { value: 'APPROVED', label: 'APPROVED' },
+                                    { value: 'REJECTED', label: 'REJECTED' },
+                                    { value: 'CANCELLED', label: 'CANCELLED' },
+                                ]}
+                            />
                         </div>
 
+                        {requests.length === 0 ? (
+                            <ClinicalEmptyState
+                                title="Chưa có yêu cầu"
+                                description="Các yêu cầu đặt lịch của bệnh nhân sẽ xuất hiện ở đây."
+                            />
+                        ) : (
+                            <List
+                                dataSource={requests}
+                                renderItem={(request) => (
+                                    <List.Item className={styles.cleanListItem}>
+                                        <List.Item.Meta
+                                            title={
+                                                <div className={styles.listTitle}>
+                                                    <strong>
+                                                        {request.patientName ||
+                                                            'Bệnh nhân'}
+                                                    </strong>
+
+                                                    <StatusTag
+                                                        value={request.status}
+                                                    />
+                                                </div>
+                                            }
+                                            description={
+                                                <div>
+                                                    <p>
+                                                        Chuyên khoa:{' '}
+                                                        <b>
+                                                            {request.specialtyName ||
+                                                                'Chưa rõ'}
+                                                        </b>
+                                                    </p>
+
+                                                    <p>
+                                                        Bác sĩ:{' '}
+                                                        <b>
+                                                            {request.doctorName ||
+                                                                'Chưa chọn bác sĩ'}
+                                                        </b>
+                                                    </p>
+
+                                                    <p>
+                                                        Thời gian mong muốn:{' '}
+                                                        <b>
+                                                            {request.desiredDate ||
+                                                                'N/A'}{' '}
+                                                            {request.desiredTime ||
+                                                                ''}
+                                                        </b>
+                                                    </p>
+
+                                                    <p>
+                                                        Hình thức:{' '}
+                                                        <b>
+                                                            {request.type ||
+                                                                'OFFLINE'}
+                                                        </b>
+                                                    </p>
+
+                                                    <p>
+                                                        Triệu chứng:{' '}
+                                                        {request.symptoms ||
+                                                            'Không có ghi chú.'}
+                                                    </p>
+
+                                                    {request.rejectionReason && (
+                                                        <p>
+                                                            Lý do từ chối:{' '}
+                                                            <b>
+                                                                {
+                                                                    request.rejectionReason
+                                                                }
+                                                            </b>
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            }
+                                        />
+
+                                        {request.status === 'PENDING' && (
+                                            <Space>
+                                                <Button
+                                                    type="primary"
+                                                    loading={
+                                                        actionLoading ===
+                                                        request.id
+                                                    }
+                                                    onClick={() =>
+                                                        openApproveModal(request)
+                                                    }
+                                                >
+                                                    Duyệt
+                                                </Button>
+
+                                                <Button
+                                                    danger
+                                                    loading={
+                                                        actionLoading ===
+                                                        request.id
+                                                    }
+                                                    onClick={() =>
+                                                        openRejectModal(request)
+                                                    }
+                                                >
+                                                    Từ chối
+                                                </Button>
+                                            </Space>
+                                        )}
+                                    </List.Item>
+                                )}
+                            />
+                        )}
+                    </Card>
+
+                    <Modal
+                        title="Duyệt yêu cầu đặt lịch"
+                        open={approveOpen}
+                        onCancel={() => setApproveOpen(false)}
+                        onOk={handleApprove}
+                        okText="Duyệt yêu cầu"
+                        cancelText="Đóng"
+                        confirmLoading={
+                            !!selectedRequest &&
+                            actionLoading === selectedRequest.id
+                        }
+                    >
+                        <p>
+                            Bệnh nhân:{' '}
+                            <b>{selectedRequest?.patientName || 'N/A'}</b>
+                        </p>
+
+                        <p>
+                            Bác sĩ:{' '}
+                            <b>{selectedRequest?.doctorName || 'N/A'}</b>
+                        </p>
+
                         <Select
-                            value={status}
-                            onChange={setStatus}
-                            options={statusOptions}
-                            style={{ minWidth: 180 }}
-                        />
-                    </div>
-
-                    {requests.length === 0 ? (
-                        <ClinicalEmptyState
-                            title="Không có yêu cầu"
-                            description="Không có appointment request phù hợp với bộ lọc hiện tại."
-                        />
-                    ) : (
-                        <List
-                            dataSource={requests}
-                            renderItem={(request) => (
-                                <List.Item className={styles.caseItem}>
-                                    <div className={styles.caseContent}>
-                                        <div>
-                                            <div className={styles.listTitle}>
-                                                <strong>{request.patientName || 'Bệnh nhân'}</strong>
-                                                <Tag color={statusColor[request.status]}>
-                                                    {request.status}
-                                                </Tag>
-                                            </div>
-
-                                            <p>
-                                                {request.specialtyName || 'Chưa rõ chuyên khoa'} ·{' '}
-                                                {request.doctorName || 'Chưa rõ bác sĩ'}
-                                            </p>
-
-                                            <div className={styles.caseMeta}>
-                                                <span>
-                                                    Ngày mong muốn:{' '}
-                                                    <b>{request.desiredDate || 'Chưa chọn'}</b>
-                                                </span>
-                                                <span>
-                                                    Khung giờ:{' '}
-                                                    <b>{request.desiredTime || 'Chưa chọn'}</b>
-                                                </span>
-                                                <span>
-                                                    Loại khám: <b>{request.type || 'OFFLINE'}</b>
-                                                </span>
-                                            </div>
-
-                                            {request.symptoms && (
-                                                <Typography.Paragraph style={{ marginTop: 12 }}>
-                                                    Triệu chứng: {request.symptoms}
-                                                </Typography.Paragraph>
-                                            )}
-                                        </div>
-
-                                        <Space>
-                                            <Button
-                                                type="primary"
-                                                disabled={request.status !== 'PENDING'}
-                                                onClick={() => openApproveModal(request)}
-                                            >
-                                                Duyệt
-                                            </Button>
-
-                                            <Button
-                                                danger
-                                                disabled={request.status !== 'PENDING'}
-                                                onClick={() => setRejectingRequest(request)}
-                                            >
-                                                Từ chối
-                                            </Button>
-                                        </Space>
-                                    </div>
-                                </List.Item>
-                            )}
-                        />
-                    )}
-                </Card>
-            </div>
-
-            <Modal
-                title="Duyệt yêu cầu đặt lịch"
-                open={!!selectedRequest}
-                onCancel={() => setSelectedRequest(null)}
-                onOk={handleApprove}
-                okText="Duyệt và tạo lịch hẹn"
-                confirmLoading={submitting}
-            >
-                {selectedRequest && (
-                    <div>
-                        <Alert
-                            type="info"
-                            showIcon
-                            message={selectedRequest.patientName || 'Bệnh nhân'}
-                            description={selectedRequest.symptoms || 'Không có triệu chứng'}
-                            style={{ marginBottom: 16 }}
-                        />
-
-                        <Select
-                            loading={slotLoading}
                             value={selectedSlotId}
                             onChange={setSelectedSlotId}
-                            placeholder="Chọn slot khám còn trống"
-                            options={slotOptions}
-                            style={{ width: '100%' }}
+                            placeholder="Chọn slot khám khả dụng"
+                            style={{ width: '100%', marginTop: 12 }}
+                            options={availableSlots.map((slot) => ({
+                                value: slot.id,
+                                label: `${new Date(
+                                    slot.startTime,
+                                ).toLocaleString('vi-VN')} → ${new Date(
+                                    slot.endTime,
+                                ).toLocaleTimeString('vi-VN')}`,
+                            }))}
                         />
-                    </div>
-                )}
-            </Modal>
 
-            <Modal
-                title="Từ chối yêu cầu"
-                open={!!rejectingRequest}
-                onCancel={() => {
-                    setRejectingRequest(null);
-                    setRejectReason('');
-                }}
-                onOk={handleReject}
-                okText="Xác nhận từ chối"
-                okButtonProps={{ danger: true }}
-                confirmLoading={submitting}
-            >
-                <Typography.Paragraph>
-                    Nhập lý do để bệnh nhân biết vì sao yêu cầu bị từ chối.
-                </Typography.Paragraph>
+                        {availableSlots.length === 0 && (
+                            <p style={{ color: '#6a7c7a', marginTop: 12 }}>
+                                Bác sĩ này chưa có slot khả dụng. Hãy yêu cầu bác sĩ
+                                tạo slot ở trang Slot làm việc.
+                            </p>
+                        )}
+                    </Modal>
 
-                <textarea
-                    value={rejectReason}
-                    onChange={(event) => setRejectReason(event.target.value)}
-                    placeholder="Ví dụ: Bác sĩ đã kín lịch trong ngày mong muốn."
-                    style={{
-                        width: '100%',
-                        minHeight: 100,
-                        borderRadius: 12,
-                        border: '1px solid rgba(16, 32, 31, 0.16)',
-                        padding: 12,
-                        resize: 'vertical',
-                    }}
-                />
-            </Modal>
+                    <Modal
+                        title="Từ chối yêu cầu đặt lịch"
+                        open={rejectOpen}
+                        onCancel={() => setRejectOpen(false)}
+                        footer={null}
+                        destroyOnClose
+                    >
+                        <Form
+                            form={rejectForm}
+                            layout="vertical"
+                            onFinish={handleReject}
+                        >
+                            <Form.Item
+                                label="Lý do từ chối"
+                                name="reason"
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Nhập lý do từ chối',
+                                    },
+                                ]}
+                            >
+                                <Input.TextArea
+                                    rows={4}
+                                    placeholder="Ví dụ: Bác sĩ không còn slot phù hợp trong ngày này."
+                                />
+                            </Form.Item>
+
+                            <Button
+                                danger
+                                htmlType="submit"
+                                loading={
+                                    !!selectedRequest &&
+                                    actionLoading === selectedRequest.id
+                                }
+                                block
+                            >
+                                Xác nhận từ chối
+                            </Button>
+                        </Form>
+                    </Modal>
+                </ClinicalPageState>
+            </RoleGuardState>
         </DashboardFrame>
     );
 }
