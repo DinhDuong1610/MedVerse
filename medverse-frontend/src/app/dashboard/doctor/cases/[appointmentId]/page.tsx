@@ -4,38 +4,63 @@ import {
     Alert,
     Button,
     Card,
+    Collapse,
     Divider,
     Form,
     Input,
     InputNumber,
     List,
+    Modal,
+    Popconfirm,
     Select,
     Skeleton,
     Space,
     Tag,
+    Typography,
     message,
 } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardFrame from '../../../_components/DashboardFrame';
+import RoleGuardState from '../../../_components/RoleGuardState';
+import StatusTag from '../../../_components/StatusTag';
+import { hasAnyPermission } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
-import { getAppointments } from '@/services/appointment.service';
+import { getAppointmentById } from '@/services/appointment.service';
 import {
     addDiagnosis,
+    completeMedicalRecord,
     createMedicalRecord,
+    deleteDiagnosis,
     getMedicalRecordByAppointment,
     updateMedicalRecord,
 } from '@/services/ehr.service';
 import {
+    getPatientAllergies,
+    getPatientMedicalProfile,
+} from '@/services/patient-medical.service';
+import {
     addPrescriptionItem,
+    cancelPrescription,
     createPrescription,
+    deletePrescriptionItem,
     finalizePrescription,
     getPrescriptionByMedicalRecord,
     runPrescriptionSafetyCheck,
+    updatePrescription,
+    updatePrescriptionItem,
 } from '@/services/prescription.service';
-import type { Appointment, MedicalRecord, Prescription } from '@/types/clinical';
+import { analyzeClinicalText } from '@/services/ai.service';
+import type {
+    Allergy,
+    Appointment,
+    MedicalRecord,
+    PatientMedicalProfile,
+    Prescription,
+    PrescriptionItem,
+} from '@/types/clinical';
 import styles from '../../../dashboard.module.scss';
-import MedicationSmartSelect from './_components/MedicationSmartSelect';
 import DiagnosisAiSuggest from './_components/DiagnosisAiSuggest';
+import MedicationSmartSelect from './_components/MedicationSmartSelect';
 
 type PageProps = {
     params: {
@@ -58,6 +83,10 @@ type DiagnosisFormValues = {
     icdDisplay?: string;
 };
 
+type PrescriptionNoteFormValues = {
+    note?: string;
+};
+
 type PrescriptionItemFormValues = {
     medicationId: string;
     dosage: string;
@@ -67,30 +96,118 @@ type PrescriptionItemFormValues = {
     instruction?: string;
 };
 
+type CancelPrescriptionFormValues = {
+    reason: string;
+};
+
+function normalizeText(value?: string | null) {
+    const trimmed = value?.trim();
+
+    return trimmed ? trimmed : undefined;
+}
+
+function isDraftPrescription(prescription?: Prescription | null) {
+    return prescription?.status === 'DRAFT';
+}
+
+function formatDateTime(value?: string) {
+    if (!value) return 'Chưa rõ';
+
+    return new Date(value).toLocaleString('vi-VN');
+}
+
+function formatTime(value?: string) {
+    if (!value) return 'Chưa rõ';
+
+    return new Date(value).toLocaleTimeString('vi-VN');
+}
+
 export default function DoctorCaseDetailPage({ params }: PageProps) {
     const { session, loading: authLoading } = useAuthSession();
 
     const [recordForm] = Form.useForm<MedicalRecordFormValues>();
     const [diagnosisForm] = Form.useForm<DiagnosisFormValues>();
+    const [prescriptionNoteForm] = Form.useForm<PrescriptionNoteFormValues>();
     const [drugForm] = Form.useForm<PrescriptionItemFormValues>();
-
-    const [loading, setLoading] = useState(true);
-    const [appointment, setAppointment] = useState<Appointment | null>(null);
-    const [medicalRecord, setMedicalRecord] = useState<MedicalRecord | null>(null);
-    const [prescription, setPrescription] = useState<Prescription | null>(null);
-    const [submitting, setSubmitting] = useState(false);
+    const [editDrugForm] = Form.useForm<PrescriptionItemFormValues>();
+    const [cancelPrescriptionForm] =
+        Form.useForm<CancelPrescriptionFormValues>();
 
     const appointmentId = params.appointmentId;
+
+    const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const [appointment, setAppointment] = useState<Appointment | null>(null);
+    const [patientProfile, setPatientProfile] =
+        useState<PatientMedicalProfile | null>(null);
+    const [allergies, setAllergies] = useState<Allergy[]>([]);
+    const [medicalRecord, setMedicalRecord] = useState<MedicalRecord | null>(
+        null,
+    );
+    const [prescription, setPrescription] = useState<Prescription | null>(null);
+
+    const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(
+        null,
+    );
+
+    const [editingItem, setEditingItem] = useState<PrescriptionItem | null>(
+        null,
+    );
+    const [editItemOpen, setEditItemOpen] = useState(false);
+    const [cancelPrescriptionOpen, setCancelPrescriptionOpen] = useState(false);
+
+    const canWriteEhr = hasAnyPermission(session, ['EHR:WRITE']);
+    const canWritePrescription = hasAnyPermission(session, [
+        'PRESCRIPTION:WRITE',
+    ]);
+
+    const prescriptionItems = prescription?.items || [];
+    const safetyAlerts = prescription?.safetyAlerts || [];
+
+    const hasCriticalSafetyAlert = useMemo(
+        () =>
+            safetyAlerts.some((item) =>
+                ['HIGH', 'CRITICAL'].includes(item.severity),
+            ),
+        [safetyAlerts],
+    );
+
+    const loadPatientSummary = async (patientId?: string) => {
+        if (!patientId) {
+            setPatientProfile(null);
+            setAllergies([]);
+            return;
+        }
+
+        const [profileResult, allergyResult] = await Promise.allSettled([
+            getPatientMedicalProfile(patientId),
+            getPatientAllergies(patientId),
+        ]);
+
+        if (profileResult.status === 'fulfilled') {
+            setPatientProfile(profileResult.value);
+        } else {
+            setPatientProfile(null);
+        }
+
+        if (allergyResult.status === 'fulfilled') {
+            setAllergies(allergyResult.value || []);
+        } else {
+            setAllergies([]);
+        }
+    };
 
     const loadCase = async () => {
         try {
             setLoading(true);
+            setError(null);
 
-            const appointmentPage = await getAppointments();
-            const foundAppointment =
-                appointmentPage.content.find((item) => item.id === appointmentId) || null;
+            const appointmentData = await getAppointmentById(appointmentId);
+            setAppointment(appointmentData);
 
-            setAppointment(foundAppointment);
+            await loadPatientSummary(appointmentData.patientId);
 
             let record: MedicalRecord | null = null;
 
@@ -99,62 +216,162 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                 setMedicalRecord(record);
 
                 recordForm.setFieldsValue({
-                    chiefComplaint: record.chiefComplaint,
-                    symptoms: record.symptoms,
-                    clinicalNote: record.clinicalNote,
-                    diagnosisText: record.diagnosisText,
-                    treatmentPlan: record.treatmentPlan,
-                    followUpNote: record.followUpNote,
+                    chiefComplaint: record.chiefComplaint || '',
+                    symptoms: record.symptoms || '',
+                    clinicalNote: record.clinicalNote || '',
+                    diagnosisText: record.diagnosisText || '',
+                    treatmentPlan: record.treatmentPlan || '',
+                    followUpNote: record.followUpNote || '',
                 });
             } catch {
                 setMedicalRecord(null);
+                setPrescription(null);
+                prescriptionNoteForm.resetFields();
             }
 
             if (record) {
                 try {
-                    const prescriptionData = await getPrescriptionByMedicalRecord(record.id);
+                    const prescriptionData =
+                        await getPrescriptionByMedicalRecord(record.id);
                     setPrescription(prescriptionData);
+
+                    prescriptionNoteForm.setFieldsValue({
+                        note: prescriptionData.note || '',
+                    });
                 } catch {
                     setPrescription(null);
+                    prescriptionNoteForm.resetFields();
                 }
             }
-
+        } catch (err) {
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể tải chi tiết ca khám.',
+            );
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (session?.role === 'DOCTOR') {
-            loadCase();
+        if (!session) return;
+
+        if (!hasAnyPermission(session, ['EHR:READ_ANY', 'EHR:WRITE'])) {
+            setError('Tài khoản hiện tại không có quyền mở ca khám.');
+            setLoading(false);
+            return;
         }
+
+        loadCase();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session, appointmentId]);
 
     const handleSaveMedicalRecord = async (values: MedicalRecordFormValues) => {
         try {
-            setSubmitting(true);
+            setActionLoading('save-record');
+
+            const payload = {
+                chiefComplaint: normalizeText(values.chiefComplaint),
+                symptoms: normalizeText(values.symptoms),
+                clinicalNote: normalizeText(values.clinicalNote),
+                diagnosisText: normalizeText(values.diagnosisText),
+                treatmentPlan: normalizeText(values.treatmentPlan),
+                followUpNote: normalizeText(values.followUpNote),
+            };
 
             let saved: MedicalRecord;
 
             if (medicalRecord) {
-                saved = await updateMedicalRecord(medicalRecord.id, values);
+                saved = await updateMedicalRecord(medicalRecord.id, payload);
                 message.success('Đã cập nhật bệnh án.');
             } else {
                 saved = await createMedicalRecord({
                     appointmentId,
-                    ...values,
+                    ...payload,
                 });
                 message.success('Đã tạo bệnh án.');
             }
 
             setMedicalRecord(saved);
             await loadCase();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể lưu bệnh án.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể lưu bệnh án.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
+        }
+    };
+
+    const handleCompleteMedicalRecord = async () => {
+        if (!medicalRecord) return;
+
+        try {
+            setActionLoading('complete-record');
+
+            await completeMedicalRecord(medicalRecord.id);
+
+            message.success('Đã hoàn tất bệnh án.');
+            await loadCase();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể hoàn tất bệnh án.',
+            );
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleAnalyzeText = async () => {
+        const values = recordForm.getFieldsValue();
+
+        const clinicalText = [
+            values.chiefComplaint,
+            values.symptoms,
+            values.clinicalNote,
+            values.diagnosisText,
+            values.treatmentPlan,
+        ]
+            .filter(Boolean)
+            .join('\n');
+
+        if (!clinicalText.trim()) {
+            message.warning('Nhập ghi chú lâm sàng trước khi gọi AI phân tích.');
+            return;
+        }
+
+        try {
+            setActionLoading('ai-analyze');
+
+            const result = await analyzeClinicalText({
+                diagnosis_text_input: clinicalText,
+                medical_history: {
+                    appointmentId,
+                    patientId: appointment?.patientId,
+                    bloodType: patientProfile?.bloodType,
+                    chronicDiseases: patientProfile?.chronicDiseases,
+                    medicalHistory: patientProfile?.medicalHistory,
+                    currentMedicationsNote:
+                        patientProfile?.currentMedicationsNote,
+                    allergies,
+                },
+            });
+
+            setAiResult(result.data || result);
+            message.success('AI đã phân tích ghi chú lâm sàng.');
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể gọi AI analyze text.',
+            );
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -165,12 +382,12 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         }
 
         try {
-            setSubmitting(true);
+            setActionLoading('add-diagnosis');
 
             await addDiagnosis(medicalRecord.id, {
                 diagnosisText: values.diagnosisText,
-                icdCode: values.icdCode,
-                icdDisplay: values.icdDisplay,
+                icdCode: normalizeText(values.icdCode),
+                icdDisplay: normalizeText(values.icdDisplay),
                 codingSystem: 'ICD-10',
                 source: 'MANUAL',
                 confidence: 1,
@@ -180,12 +397,35 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
             diagnosisForm.resetFields();
             message.success('Đã thêm chẩn đoán.');
             await loadCase();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể thêm chẩn đoán.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể thêm chẩn đoán.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
+        }
+    };
+
+    const handleDeleteDiagnosis = async (diagnosisId: string) => {
+        if (!medicalRecord) return;
+
+        try {
+            setActionLoading(diagnosisId);
+
+            await deleteDiagnosis(medicalRecord.id, diagnosisId);
+
+            message.success('Đã xóa chẩn đoán.');
+            await loadCase();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể xóa chẩn đoán.',
+            );
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -196,22 +436,54 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         }
 
         try {
-            setSubmitting(true);
+            setActionLoading('create-prescription');
 
             const created = await createPrescription({
                 medicalRecordId: medicalRecord.id,
-                note: 'Đơn thuốc tạo từ giao diện bác sĩ.',
+                note: 'Đơn thuốc tạo từ Doctor Clinical Workspace.',
             });
 
             setPrescription(created);
+            prescriptionNoteForm.setFieldsValue({
+                note: created.note || '',
+            });
+
             message.success('Đã tạo đơn thuốc.');
             await loadCase();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể tạo đơn thuốc.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể tạo đơn thuốc.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
+        }
+    };
+
+    const handleUpdatePrescriptionNote = async (
+        values: PrescriptionNoteFormValues,
+    ) => {
+        if (!prescription) return;
+
+        try {
+            setActionLoading('update-prescription-note');
+
+            const updated = await updatePrescription(prescription.id, {
+                note: normalizeText(values.note) || null,
+            });
+
+            setPrescription(updated);
+            message.success('Đã cập nhật ghi chú đơn thuốc.');
+            await loadCase();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể cập nhật đơn thuốc.',
+            );
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -222,19 +494,93 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         }
 
         try {
-            setSubmitting(true);
+            setActionLoading('add-medication');
 
-            await addPrescriptionItem(prescription.id, values);
+            await addPrescriptionItem(prescription.id, {
+                medicationId: values.medicationId,
+                dosage: values.dosage,
+                frequency: values.frequency,
+                duration: values.duration,
+                quantity: values.quantity,
+                instruction: normalizeText(values.instruction),
+            });
 
             drugForm.resetFields();
             message.success('Đã thêm thuốc vào đơn.');
             await loadCase();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể thêm thuốc.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể thêm thuốc.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
+        }
+    };
+
+    const openEditItemModal = (item: PrescriptionItem) => {
+        setEditingItem(item);
+        editDrugForm.setFieldsValue({
+            medicationId: item.medicationId || '',
+            dosage: item.dosage || '',
+            frequency: item.frequency || '',
+            duration: item.duration || '',
+            quantity: item.quantity || 1,
+            instruction: item.instruction || '',
+        });
+        setEditItemOpen(true);
+    };
+
+    const handleUpdateMedication = async (values: PrescriptionItemFormValues) => {
+        if (!prescription || !editingItem) return;
+
+        try {
+            setActionLoading('update-medication');
+
+            await updatePrescriptionItem(prescription.id, editingItem.id, {
+                dosage: values.dosage,
+                frequency: values.frequency,
+                duration: values.duration,
+                quantity: values.quantity,
+                instruction: normalizeText(values.instruction) || null,
+            });
+
+            message.success('Đã cập nhật thuốc trong đơn.');
+            setEditItemOpen(false);
+            setEditingItem(null);
+            editDrugForm.resetFields();
+
+            await loadCase();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể cập nhật thuốc.',
+            );
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleDeleteMedication = async (itemId: string) => {
+        if (!prescription) return;
+
+        try {
+            setActionLoading(itemId);
+
+            await deletePrescriptionItem(prescription.id, itemId);
+
+            message.success('Đã xóa thuốc khỏi đơn.');
+            await loadCase();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể xóa thuốc.',
+            );
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -242,17 +588,21 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         if (!prescription) return;
 
         try {
-            setSubmitting(true);
+            setActionLoading('safety-check');
+
             const checked = await runPrescriptionSafetyCheck(prescription.id);
             setPrescription(checked);
+
             message.success('Đã chạy AI safety check.');
             await loadCase();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể chạy AI safety.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể chạy AI safety.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
         }
     };
 
@@ -260,297 +610,909 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         if (!prescription) return;
 
         try {
-            setSubmitting(true);
+            setActionLoading('finalize-prescription');
+
             const finalized = await finalizePrescription(prescription.id);
             setPrescription(finalized);
+
             message.success('Đã hoàn tất đơn thuốc.');
             await loadCase();
-        } catch (error) {
+        } catch (err) {
             message.error(
-                error instanceof Error ? error.message : 'Không thể hoàn tất đơn thuốc.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể hoàn tất đơn thuốc.',
             );
         } finally {
-            setSubmitting(false);
+            setActionLoading(null);
+        }
+    };
+
+    const handleCancelPrescription = async (
+        values: CancelPrescriptionFormValues,
+    ) => {
+        if (!prescription) return;
+
+        try {
+            setActionLoading('cancel-prescription');
+
+            await cancelPrescription(prescription.id, values.reason);
+
+            message.success('Đã hủy đơn thuốc.');
+            setCancelPrescriptionOpen(false);
+            cancelPrescriptionForm.resetFields();
+
+            await loadCase();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể hủy đơn thuốc.',
+            );
+        } finally {
+            setActionLoading(null);
         }
     };
 
     if (authLoading || !session || loading) {
-        return <Skeleton active paragraph={{ rows: 10 }} />;
+        return <Skeleton active paragraph={{ rows: 12 }} />;
     }
 
     return (
         <DashboardFrame
             session={session}
-            title="Chi tiết ca khám"
-            subtitle="Cập nhật bệnh án, chẩn đoán, kê đơn và kiểm tra AI safety"
+            title="Doctor Clinical Workspace"
+            subtitle="Khám bệnh, bệnh án, chẩn đoán, đơn thuốc và AI safety"
         >
-            <div className={styles.detailGrid}>
-                <Card className={styles.detailCard} title="Thông tin lịch khám">
-                    {appointment ? (
+            <RoleGuardState
+                session={session}
+                anyPermissions={['EHR:READ_ANY', 'EHR:WRITE']}
+            >
+                {error && (
+                    <Alert
+                        type="error"
+                        showIcon
+                        message="Không thể tải ca khám"
+                        description={error}
+                        style={{ marginBottom: 20 }}
+                    />
+                )}
+
+                <section className={styles.detailGrid}>
+                    <Card className={styles.detailCard} title="Thông tin lịch khám">
+                        {appointment ? (
+                            <div className={styles.profileMatrix}>
+                                <div>
+                                    <span>Bệnh nhân</span>
+                                    <strong>
+                                        {appointment.patientName ||
+                                            'Bệnh nhân'}
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    <span>Trạng thái</span>
+                                    <strong>
+                                        <StatusTag value={appointment.status} />
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    <span>Bắt đầu</span>
+                                    <strong>
+                                        {formatDateTime(
+                                            appointment.startTime,
+                                        )}
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    <span>Kết thúc</span>
+                                    <strong>
+                                        {formatTime(appointment.endTime)}
+                                    </strong>
+                                </div>
+                            </div>
+                        ) : (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                message="Không tìm thấy lịch khám."
+                            />
+                        )}
+                    </Card>
+
+                    <Card className={styles.detailCard} title="Tóm tắt bệnh nhân">
                         <div className={styles.profileMatrix}>
                             <div>
-                                <span>Bệnh nhân</span>
-                                <strong>{appointment.patientName || 'Bệnh nhân demo'}</strong>
-                            </div>
-                            <div>
-                                <span>Trạng thái</span>
-                                <strong>{appointment.status}</strong>
-                            </div>
-                            <div>
-                                <span>Thời gian</span>
+                                <span>Nhóm máu</span>
                                 <strong>
-                                    {new Date(appointment.startTime).toLocaleString('vi-VN')}
+                                    {patientProfile?.bloodType ||
+                                        'Chưa cập nhật'}
                                 </strong>
                             </div>
+
                             <div>
-                                <span>Chẩn đoán sơ bộ</span>
-                                <strong>{appointment.diagnosis || 'Chưa có'}</strong>
+                                <span>Chiều cao / cân nặng</span>
+                                <strong>
+                                    {patientProfile?.heightCm || '--'} cm ·{' '}
+                                    {patientProfile?.weightKg || '--'} kg
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Bệnh nền</span>
+                                <strong>
+                                    {patientProfile?.chronicDiseases ||
+                                        'Không ghi nhận'}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Thuốc đang dùng</span>
+                                <strong>
+                                    {patientProfile?.currentMedicationsNote ||
+                                        'Không ghi nhận'}
+                                </strong>
                             </div>
                         </div>
-                    ) : (
-                        <Alert
-                            type="warning"
-                            showIcon
-                            message="Không tìm thấy appointment trong danh sách hiện tại."
-                        />
-                    )}
-                </Card>
 
-                <Card className={styles.detailCard} title="Bệnh án điện tử">
-                    <Form
-                        form={recordForm}
-                        layout="vertical"
-                        onFinish={handleSaveMedicalRecord}
+                        <Divider />
+
+                        <h3>Dị ứng</h3>
+
+                        {allergies.length === 0 ? (
+                            <Alert
+                                type="success"
+                                showIcon
+                                message="Chưa ghi nhận dị ứng."
+                            />
+                        ) : (
+                            <Space wrap>
+                                {allergies.map((item) => (
+                                    <Tag key={item.id} color="red">
+                                        {item.allergen} ·{' '}
+                                        {item.severity || 'UNKNOWN'}
+                                    </Tag>
+                                ))}
+                            </Space>
+                        )}
+                    </Card>
+
+                    <Card
+                        className={styles.detailCard}
+                        title="Bệnh án điện tử"
+                        extra={
+                            medicalRecord ? (
+                                <Space>
+                                    <StatusTag value={medicalRecord.status} />
+
+                                    <Button
+                                        onClick={handleAnalyzeText}
+                                        loading={
+                                            actionLoading === 'ai-analyze'
+                                        }
+                                    >
+                                        AI analyze
+                                    </Button>
+
+                                    <Button
+                                        type="primary"
+                                        disabled={
+                                            !canWriteEhr ||
+                                            medicalRecord.status ===
+                                            'COMPLETED'
+                                        }
+                                        loading={
+                                            actionLoading ===
+                                            'complete-record'
+                                        }
+                                        onClick={handleCompleteMedicalRecord}
+                                    >
+                                        Complete
+                                    </Button>
+                                </Space>
+                            ) : null
+                        }
                     >
-                        <Form.Item label="Lý do khám" name="chiefComplaint">
-                            <Input placeholder="Ví dụ: Sốt, đau họng 3 ngày" />
-                        </Form.Item>
+                        <Form
+                            form={recordForm}
+                            layout="vertical"
+                            onFinish={handleSaveMedicalRecord}
+                            disabled={!canWriteEhr}
+                        >
+                            <Form.Item label="Lý do khám" name="chiefComplaint">
+                                <Input placeholder="Ví dụ: Sốt, đau họng 3 ngày" />
+                            </Form.Item>
 
-                        <Form.Item label="Triệu chứng" name="symptoms">
-                            <Input.TextArea rows={3} placeholder="Mô tả triệu chứng" />
-                        </Form.Item>
+                            <Form.Item label="Triệu chứng" name="symptoms">
+                                <Input.TextArea
+                                    rows={3}
+                                    placeholder="Mô tả triệu chứng"
+                                />
+                            </Form.Item>
 
-                        <Form.Item label="Ghi chú lâm sàng" name="clinicalNote">
-                            <Input.TextArea rows={3} placeholder="Kết quả khám lâm sàng" />
-                        </Form.Item>
+                            <Form.Item
+                                label="Ghi chú lâm sàng"
+                                name="clinicalNote"
+                            >
+                                <Input.TextArea
+                                    rows={4}
+                                    placeholder="Kết quả khám lâm sàng"
+                                />
+                            </Form.Item>
 
-                        <Form.Item label="Chẩn đoán chính" name="diagnosisText">
-                            <Input placeholder="Ví dụ: Viêm họng cấp" />
-                        </Form.Item>
+                            <Form.Item
+                                label="Chẩn đoán chính"
+                                name="diagnosisText"
+                            >
+                                <Input placeholder="Ví dụ: Viêm họng cấp" />
+                            </Form.Item>
 
-                        <Form.Item label="Kế hoạch điều trị" name="treatmentPlan">
-                            <Input.TextArea rows={3} placeholder="Điều trị, nghỉ ngơi, theo dõi..." />
-                        </Form.Item>
+                            <Form.Item
+                                label="Kế hoạch điều trị"
+                                name="treatmentPlan"
+                            >
+                                <Input.TextArea
+                                    rows={4}
+                                    placeholder="Điều trị, nghỉ ngơi, theo dõi..."
+                                />
+                            </Form.Item>
 
-                        <Form.Item label="Ghi chú tái khám" name="followUpNote">
-                            <Input.TextArea rows={2} placeholder="Tái khám sau..." />
-                        </Form.Item>
+                            <Form.Item
+                                label="Ghi chú tái khám"
+                                name="followUpNote"
+                            >
+                                <Input.TextArea
+                                    rows={2}
+                                    placeholder="Tái khám sau..."
+                                />
+                            </Form.Item>
 
-                        <Button type="primary" htmlType="submit" loading={submitting}>
-                            {medicalRecord ? 'Cập nhật bệnh án' : 'Tạo bệnh án'}
-                        </Button>
-                    </Form>
-                </Card>
+                            <Button
+                                type="primary"
+                                htmlType="submit"
+                                loading={actionLoading === 'save-record'}
+                                disabled={!canWriteEhr}
+                            >
+                                {medicalRecord
+                                    ? 'Cập nhật bệnh án'
+                                    : 'Tạo bệnh án'}
+                            </Button>
+                        </Form>
 
-                <Card className={styles.detailCard} title="Chẩn đoán ICD">
-                    <DiagnosisAiSuggest
-                        onPick={(item) => {
-                            diagnosisForm.setFieldsValue({
-                                diagnosisText: item.diagnosisText,
-                                icdCode: item.icdCode,
-                                icdDisplay: item.icdDisplay,
-                            });
-                        }}
-                    />
+                        {aiResult && (
+                            <>
+                                <Divider />
+
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    message="Kết quả AI analyze text"
+                                    description={
+                                        <Typography.Text>
+                                            AI chỉ hỗ trợ phân tích. Bác sĩ là
+                                            người xác nhận cuối cùng.
+                                        </Typography.Text>
+                                    }
+                                />
+
+                                <pre
+                                    style={{
+                                        marginTop: 12,
+                                        padding: 14,
+                                        borderRadius: 16,
+                                        background: '#f6fffd',
+                                        overflow: 'auto',
+                                        maxHeight: 260,
+                                    }}
+                                >
+                                    {JSON.stringify(aiResult, null, 2)}
+                                </pre>
+                            </>
+                        )}
+                    </Card>
+
+                    <Card className={styles.detailCard} title="Chẩn đoán ICD">
+                        <DiagnosisAiSuggest
+                            onPick={(item) => {
+                                diagnosisForm.setFieldsValue({
+                                    diagnosisText: item.diagnosisText,
+                                    icdCode: item.icdCode,
+                                    icdDisplay: item.icdDisplay,
+                                });
+                            }}
+                        />
+
+                        <Divider />
+
+                        <Form
+                            form={diagnosisForm}
+                            layout="vertical"
+                            onFinish={handleAddDiagnosis}
+                            disabled={!canWriteEhr || !medicalRecord}
+                        >
+                            <Form.Item
+                                label="Chẩn đoán"
+                                name="diagnosisText"
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Nhập chẩn đoán',
+                                    },
+                                ]}
+                            >
+                                <Input placeholder="Viêm họng cấp" />
+                            </Form.Item>
+
+                            <Space.Compact style={{ width: '100%' }}>
+                                <Form.Item
+                                    name="icdCode"
+                                    style={{ width: '35%' }}
+                                >
+                                    <Input placeholder="J02" />
+                                </Form.Item>
+
+                                <Form.Item
+                                    name="icdDisplay"
+                                    style={{ width: '65%' }}
+                                >
+                                    <Input placeholder="Acute pharyngitis" />
+                                </Form.Item>
+                            </Space.Compact>
+
+                            <Button
+                                type="primary"
+                                ghost
+                                htmlType="submit"
+                                disabled={!canWriteEhr || !medicalRecord}
+                                loading={actionLoading === 'add-diagnosis'}
+                            >
+                                Thêm chẩn đoán
+                            </Button>
+                        </Form>
+
+                        <Divider />
+
+                        <List
+                            dataSource={medicalRecord?.diagnoses || []}
+                            locale={{ emptyText: 'Chưa có chẩn đoán' }}
+                            renderItem={(item) => (
+                                <List.Item
+                                    actions={[
+                                        <Popconfirm
+                                            key="delete"
+                                            title="Xóa chẩn đoán?"
+                                            description="Chẩn đoán này sẽ bị xóa khỏi bệnh án."
+                                            okText="Xóa"
+                                            cancelText="Đóng"
+                                            okButtonProps={{ danger: true }}
+                                            onConfirm={() =>
+                                                handleDeleteDiagnosis(item.id)
+                                            }
+                                        >
+                                            <Button
+                                                danger
+                                                type="link"
+                                                disabled={!canWriteEhr}
+                                                loading={
+                                                    actionLoading === item.id
+                                                }
+                                            >
+                                                Xóa
+                                            </Button>
+                                        </Popconfirm>,
+                                    ]}
+                                >
+                                    <List.Item.Meta
+                                        title={
+                                            <span>
+                                                {item.diagnosisText}{' '}
+                                                {item.icdCode && (
+                                                    <Tag color="blue">
+                                                        {item.icdCode}
+                                                    </Tag>
+                                                )}
+                                            </span>
+                                        }
+                                        description={
+                                            item.icdDisplay ||
+                                            item.codingSystem ||
+                                            'Không có mô tả ICD.'
+                                        }
+                                    />
+                                </List.Item>
+                            )}
+                        />
+                    </Card>
+
+                    <Card
+                        className={styles.detailCard}
+                        title="Đơn thuốc"
+                        extra={
+                            prescription ? (
+                                <Space wrap>
+                                    <StatusTag value={prescription.status} />
+
+                                    <Button
+                                        onClick={handleRunSafety}
+                                        disabled={!canWritePrescription}
+                                        loading={
+                                            actionLoading === 'safety-check'
+                                        }
+                                    >
+                                        AI safety
+                                    </Button>
+
+                                    <Button
+                                        type="primary"
+                                        disabled={
+                                            !canWritePrescription ||
+                                            !isDraftPrescription(prescription)
+                                        }
+                                        onClick={handleFinalizePrescription}
+                                        loading={
+                                            actionLoading ===
+                                            'finalize-prescription'
+                                        }
+                                    >
+                                        Finalize
+                                    </Button>
+
+                                    <Button
+                                        danger
+                                        disabled={
+                                            !canWritePrescription ||
+                                            !isDraftPrescription(prescription)
+                                        }
+                                        onClick={() =>
+                                            setCancelPrescriptionOpen(true)
+                                        }
+                                    >
+                                        Cancel
+                                    </Button>
+                                </Space>
+                            ) : (
+                                <Button
+                                    type="primary"
+                                    onClick={handleCreatePrescription}
+                                    disabled={
+                                        !medicalRecord ||
+                                        !canWritePrescription
+                                    }
+                                    loading={
+                                        actionLoading ===
+                                        'create-prescription'
+                                    }
+                                >
+                                    Tạo đơn thuốc
+                                </Button>
+                            )
+                        }
+                    >
+                        {!prescription ? (
+                            <Alert
+                                type="info"
+                                showIcon
+                                message="Hãy tạo bệnh án trước, sau đó tạo đơn thuốc."
+                            />
+                        ) : (
+                            <>
+                                {hasCriticalSafetyAlert && (
+                                    <Alert
+                                        type="warning"
+                                        showIcon
+                                        message="Đơn thuốc có cảnh báo an toàn mức cao"
+                                        description="Vui lòng xem kỹ cảnh báo AI trước khi finalize. AI chỉ hỗ trợ, bác sĩ vẫn là người quyết định cuối cùng."
+                                        style={{ marginBottom: 16 }}
+                                    />
+                                )}
+
+                                <Form
+                                    form={prescriptionNoteForm}
+                                    layout="vertical"
+                                    onFinish={handleUpdatePrescriptionNote}
+                                    disabled={
+                                        !canWritePrescription ||
+                                        !isDraftPrescription(prescription)
+                                    }
+                                >
+                                    <Form.Item label="Ghi chú đơn thuốc" name="note">
+                                        <Input.TextArea
+                                            rows={3}
+                                            placeholder="Ghi chú chung cho đơn thuốc..."
+                                        />
+                                    </Form.Item>
+
+                                    <Button
+                                        htmlType="submit"
+                                        disabled={
+                                            !canWritePrescription ||
+                                            !isDraftPrescription(prescription)
+                                        }
+                                        loading={
+                                            actionLoading ===
+                                            'update-prescription-note'
+                                        }
+                                    >
+                                        Cập nhật ghi chú
+                                    </Button>
+                                </Form>
+
+                                <Divider />
+
+                                <Form
+                                    form={drugForm}
+                                    layout="vertical"
+                                    onFinish={handleAddMedication}
+                                    disabled={
+                                        !canWritePrescription ||
+                                        !isDraftPrescription(prescription)
+                                    }
+                                >
+                                    <Form.Item
+                                        label="Thuốc"
+                                        name="medicationId"
+                                        rules={[
+                                            {
+                                                required: true,
+                                                message: 'Chọn thuốc',
+                                            },
+                                        ]}
+                                    >
+                                        <MedicationSmartSelect />
+                                    </Form.Item>
+
+                                    <Space.Compact style={{ width: '100%' }}>
+                                        <Form.Item
+                                            name="dosage"
+                                            rules={[
+                                                {
+                                                    required: true,
+                                                    message: 'Nhập liều dùng',
+                                                },
+                                            ]}
+                                            style={{ width: '25%' }}
+                                        >
+                                            <Input placeholder="500mg" />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="frequency"
+                                            rules={[
+                                                {
+                                                    required: true,
+                                                    message: 'Nhập tần suất',
+                                                },
+                                            ]}
+                                            style={{ width: '25%' }}
+                                        >
+                                            <Input placeholder="2 lần/ngày" />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="duration"
+                                            rules={[
+                                                {
+                                                    required: true,
+                                                    message:
+                                                        'Nhập thời gian dùng',
+                                                },
+                                            ]}
+                                            style={{ width: '25%' }}
+                                        >
+                                            <Input placeholder="3 ngày" />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="quantity"
+                                            rules={[
+                                                {
+                                                    required: true,
+                                                    message: 'Nhập số lượng',
+                                                },
+                                            ]}
+                                            style={{ width: '25%' }}
+                                        >
+                                            <InputNumber
+                                                style={{ width: '100%' }}
+                                                min={1}
+                                                placeholder="SL"
+                                            />
+                                        </Form.Item>
+                                    </Space.Compact>
+
+                                    <Form.Item
+                                        name="instruction"
+                                        label="Hướng dẫn"
+                                    >
+                                        <Input.TextArea
+                                            rows={2}
+                                            placeholder="Uống sau ăn..."
+                                        />
+                                    </Form.Item>
+
+                                    <Button
+                                        type="primary"
+                                        ghost
+                                        htmlType="submit"
+                                        disabled={
+                                            !canWritePrescription ||
+                                            !isDraftPrescription(prescription)
+                                        }
+                                        loading={
+                                            actionLoading === 'add-medication'
+                                        }
+                                    >
+                                        Thêm thuốc
+                                    </Button>
+                                </Form>
+
+                                <Divider />
+
+                                <List
+                                    dataSource={prescriptionItems}
+                                    locale={{
+                                        emptyText: 'Chưa có thuốc trong đơn',
+                                    }}
+                                    renderItem={(item) => (
+                                        <List.Item
+                                            actions={[
+                                                <Button
+                                                    key="edit"
+                                                    type="link"
+                                                    disabled={
+                                                        !canWritePrescription ||
+                                                        !isDraftPrescription(
+                                                            prescription,
+                                                        )
+                                                    }
+                                                    onClick={() =>
+                                                        openEditItemModal(item)
+                                                    }
+                                                >
+                                                    Sửa
+                                                </Button>,
+
+                                                <Popconfirm
+                                                    key="delete"
+                                                    title="Xóa thuốc khỏi đơn?"
+                                                    description="Thuốc này sẽ bị xóa khỏi đơn thuốc."
+                                                    okText="Xóa"
+                                                    cancelText="Đóng"
+                                                    okButtonProps={{
+                                                        danger: true,
+                                                    }}
+                                                    onConfirm={() =>
+                                                        handleDeleteMedication(
+                                                            item.id,
+                                                        )
+                                                    }
+                                                >
+                                                    <Button
+                                                        danger
+                                                        type="link"
+                                                        disabled={
+                                                            !canWritePrescription ||
+                                                            !isDraftPrescription(
+                                                                prescription,
+                                                            )
+                                                        }
+                                                        loading={
+                                                            actionLoading ===
+                                                            item.id
+                                                        }
+                                                    >
+                                                        Xóa
+                                                    </Button>
+                                                </Popconfirm>,
+                                            ]}
+                                        >
+                                            <List.Item.Meta
+                                                title={
+                                                    <span>
+                                                        {item.medicationName}{' '}
+                                                        {item.atcCode && (
+                                                            <Tag color="cyan">
+                                                                {item.atcCode}
+                                                            </Tag>
+                                                        )}
+                                                    </span>
+                                                }
+                                                description={
+                                                    <div>
+                                                        <p>
+                                                            {item.dosage ||
+                                                                ''}{' '}
+                                                            ·{' '}
+                                                            {item.frequency ||
+                                                                ''}{' '}
+                                                            ·{' '}
+                                                            {item.duration ||
+                                                                ''}{' '}
+                                                            · SL:{' '}
+                                                            {item.quantity ||
+                                                                0}
+                                                        </p>
+                                                        <p>
+                                                            {item.instruction ||
+                                                                'Không có hướng dẫn.'}
+                                                        </p>
+                                                    </div>
+                                                }
+                                            />
+                                        </List.Item>
+                                    )}
+                                />
+
+                                {safetyAlerts.length > 0 && (
+                                    <>
+                                        <Divider />
+
+                                        <h3>Cảnh báo AI Safety</h3>
+
+                                        <div className={styles.alertStrip}>
+                                            {safetyAlerts.map((alert) => (
+                                                <Tag
+                                                    key={alert.id}
+                                                    color={
+                                                        alert.severity ===
+                                                            'HIGH' ||
+                                                            alert.severity ===
+                                                            'CRITICAL'
+                                                            ? 'red'
+                                                            : 'gold'
+                                                    }
+                                                >
+                                                    {alert.severity} ·{' '}
+                                                    {alert.type}: {' '}
+                                                    {alert.title ||
+                                                        alert.message}
+                                                </Tag>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </Card>
+                </section>
+
+                <Modal
+                    title="Cập nhật thuốc trong đơn"
+                    open={editItemOpen}
+                    onCancel={() => {
+                        setEditItemOpen(false);
+                        setEditingItem(null);
+                        editDrugForm.resetFields();
+                    }}
+                    footer={null}
+                    destroyOnClose
+                >
                     <Form
-                        form={diagnosisForm}
+                        form={editDrugForm}
                         layout="vertical"
-                        onFinish={handleAddDiagnosis}
+                        onFinish={handleUpdateMedication}
                     >
                         <Form.Item
-                            label="Chẩn đoán"
-                            name="diagnosisText"
-                            rules={[{ required: true, message: 'Nhập chẩn đoán' }]}
+                            label="Thuốc"
+                            name="medicationId"
                         >
-                            <Input placeholder="Viêm họng cấp" />
+                            <Input disabled />
                         </Form.Item>
 
-                        <Space.Compact style={{ width: '100%' }}>
-                            <Form.Item name="icdCode" style={{ width: '35%' }}>
-                                <Input placeholder="J02" />
-                            </Form.Item>
-                            <Form.Item name="icdDisplay" style={{ width: '65%' }}>
-                                <Input placeholder="Acute pharyngitis" />
-                            </Form.Item>
-                        </Space.Compact>
+                        <Form.Item
+                            label="Liều dùng"
+                            name="dosage"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Nhập liều dùng',
+                                },
+                            ]}
+                        >
+                            <Input placeholder="500mg" />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Tần suất"
+                            name="frequency"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Nhập tần suất',
+                                },
+                            ]}
+                        >
+                            <Input placeholder="2 lần/ngày" />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Thời gian dùng"
+                            name="duration"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Nhập thời gian dùng',
+                                },
+                            ]}
+                        >
+                            <Input placeholder="3 ngày" />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Số lượng"
+                            name="quantity"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Nhập số lượng',
+                                },
+                            ]}
+                        >
+                            <InputNumber
+                                style={{ width: '100%' }}
+                                min={1}
+                            />
+                        </Form.Item>
+
+                        <Form.Item label="Hướng dẫn" name="instruction">
+                            <Input.TextArea rows={3} />
+                        </Form.Item>
 
                         <Button
                             type="primary"
-                            ghost
                             htmlType="submit"
-                            disabled={!medicalRecord}
-                            loading={submitting}
+                            block
+                            loading={actionLoading === 'update-medication'}
                         >
-                            Thêm chẩn đoán
+                            Lưu thay đổi
                         </Button>
                     </Form>
+                </Modal>
 
-                    <Divider />
-
-                    <List
-                        dataSource={medicalRecord?.diagnoses || []}
-                        locale={{ emptyText: 'Chưa có chẩn đoán' }}
-                        renderItem={(item) => (
-                            <List.Item>
-                                <List.Item.Meta
-                                    title={
-                                        <span>
-                                            {item.diagnosisText}{' '}
-                                            {item.icdCode && <Tag color="blue">{item.icdCode}</Tag>}
-                                        </span>
-                                    }
-                                    description={item.icdDisplay}
-                                />
-                            </List.Item>
-                        )}
-                    />
-                </Card>
-
-                <Card
-                    className={styles.detailCard}
-                    title="Đơn thuốc"
-                    extra={
-                        prescription ? (
-                            <Space>
-                                <Button onClick={handleRunSafety} loading={submitting}>
-                                    AI safety
-                                </Button>
-                                <Button
-                                    type="primary"
-                                    onClick={handleFinalizePrescription}
-                                    loading={submitting}
-                                    disabled={prescription.status !== 'DRAFT'}
-                                >
-                                    Finalize
-                                </Button>
-                            </Space>
-                        ) : (
-                            <Button
-                                type="primary"
-                                onClick={handleCreatePrescription}
-                                disabled={!medicalRecord}
-                                loading={submitting}
-                            >
-                                Tạo đơn thuốc
-                            </Button>
-                        )
-                    }
+                <Modal
+                    title="Hủy đơn thuốc"
+                    open={cancelPrescriptionOpen}
+                    onCancel={() => {
+                        setCancelPrescriptionOpen(false);
+                        cancelPrescriptionForm.resetFields();
+                    }}
+                    footer={null}
+                    destroyOnClose
                 >
-                    {prescription ? (
-                        <>
-                            <Tag color={prescription.status === 'FINALIZED' ? 'green' : 'gold'}>
-                                {prescription.status}
-                            </Tag>
-
-                            <Divider />
-
-                            <Form
-                                form={drugForm}
-                                layout="vertical"
-                                onFinish={handleAddMedication}
-                            >
-                                <Form.Item
-                                    label="Thuốc"
-                                    name="medicationId"
-                                    rules={[{ required: true, message: 'Chọn thuốc' }]}
-                                >
-                                    <MedicationSmartSelect />
-                                </Form.Item>
-
-                                <Space.Compact style={{ width: '100%' }}>
-                                    <Form.Item name="dosage" rules={[{ required: true, message: 'Nhập liều dùng' }]} style={{ width: '25%' }}>
-                                        <Input placeholder="500mg" />
-                                    </Form.Item>
-                                    <Form.Item name="frequency" rules={[{ required: true, message: 'Nhập tần suất' }]} style={{ width: '25%' }}>
-                                        <Input placeholder="2 lần/ngày" />
-                                    </Form.Item>
-                                    <Form.Item name="duration" rules={[{ required: true, message: 'Nhập thời gian sử dụng' }]} style={{ width: '25%' }}>
-                                        <Input placeholder="3 ngày" />
-                                    </Form.Item>
-                                    <Form.Item
-                                        name="quantity"
-                                        rules={[{ required: true, message: 'Nhập số lượng' }]}
-                                        style={{ width: '25%' }}
-                                    >
-                                        <InputNumber
-                                            style={{ width: '100%' }}
-                                            min={1}
-                                            placeholder="Số lượng"
-                                        />
-                                    </Form.Item>
-                                </Space.Compact>
-
-                                <Form.Item name="instruction" label="Hướng dẫn">
-                                    <Input.TextArea rows={2} placeholder="Uống sau ăn..." />
-                                </Form.Item>
-
-                                <Button
-                                    type="primary"
-                                    ghost
-                                    htmlType="submit"
-                                    disabled={prescription.status !== 'DRAFT'}
-                                    loading={submitting}
-                                >
-                                    Thêm thuốc
-                                </Button>
-                            </Form>
-
-                            <Divider />
-
-                            <List
-                                dataSource={prescription.items || []}
-                                locale={{ emptyText: 'Chưa có thuốc trong đơn' }}
-                                renderItem={(item) => (
-                                    <List.Item>
-                                        <List.Item.Meta
-                                            title={item.medicationName}
-                                            description={`${item.dosage || ''} · ${item.frequency || ''} · ${item.duration || ''}`}
-                                        />
-                                    </List.Item>
-                                )}
+                    <Form
+                        form={cancelPrescriptionForm}
+                        layout="vertical"
+                        onFinish={handleCancelPrescription}
+                    >
+                        <Form.Item
+                            label="Lý do hủy"
+                            name="reason"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Nhập lý do hủy đơn thuốc',
+                                },
+                            ]}
+                        >
+                            <Input.TextArea
+                                rows={4}
+                                placeholder="Ví dụ: bệnh nhân dị ứng, đổi phác đồ, kê nhầm thuốc..."
                             />
+                        </Form.Item>
 
-                            {prescription.safetyAlerts?.length ? (
-                                <>
-                                    <Divider />
-                                    <h3>Cảnh báo AI</h3>
-                                    <div className={styles.alertStrip}>
-                                        {prescription.safetyAlerts.map((alert) => (
-                                            <Tag
-                                                key={alert.id}
-                                                color={
-                                                    alert.severity === 'HIGH' ||
-                                                        alert.severity === 'CRITICAL'
-                                                        ? 'red'
-                                                        : 'gold'
-                                                }
-                                            >
-                                                {alert.type}: {alert.title || alert.message}
-                                            </Tag>
-                                        ))}
-                                    </div>
-                                </>
-                            ) : null}
-                        </>
-                    ) : (
-                        <Alert
-                            type="info"
-                            showIcon
-                            message="Hãy tạo bệnh án trước, sau đó tạo đơn thuốc."
-                        />
-                    )}
-                </Card>
-            </div>
+                        <Button
+                            danger
+                            htmlType="submit"
+                            block
+                            loading={actionLoading === 'cancel-prescription'}
+                        >
+                            Xác nhận hủy đơn thuốc
+                        </Button>
+                    </Form>
+                </Modal>
+            </RoleGuardState>
         </DashboardFrame>
     );
 }
