@@ -46,9 +46,6 @@ const NAV_ITEMS: NavItem[] = [
         icon: <BellOutlined />,
     },
 
-    /**
-     * Patient Portal features
-     */
     {
         label: 'Đặt lịch',
         href: '/dashboard/patient/book-appointment',
@@ -86,9 +83,6 @@ const NAV_ITEMS: NavItem[] = [
         anyPermissions: ['PRESCRIPTION:READ_OWN'],
     },
 
-    /**
-     * Doctor / Clinical workspace features
-     */
     {
         label: 'Lịch khám',
         href: '/dashboard/doctor/appointments',
@@ -114,9 +108,6 @@ const NAV_ITEMS: NavItem[] = [
         anyPermissions: ['PRESCRIPTION:READ_ANY', 'PRESCRIPTION:WRITE'],
     },
 
-    /**
-     * Receptionist scheduling features
-     */
     {
         label: 'Yêu cầu đặt lịch',
         href: '/dashboard/receptionist/requests',
@@ -130,9 +121,13 @@ const NAV_ITEMS: NavItem[] = [
         anyPermissions: ['APPOINTMENT:READ_ANY'],
     },
 
-    /**
-     * Admin / inventory / monitoring
-     */
+    {
+        label: 'Người dùng',
+        href: '/dashboard/admin/users',
+        icon: <UserOutlined />,
+        anyPermissions: ['ADMIN_PANEL:ACCESS'],
+        anyRoles: ['ADMIN'],
+    },
     {
         label: 'Kho thuốc',
         href: '/dashboard/admin/inventory',
