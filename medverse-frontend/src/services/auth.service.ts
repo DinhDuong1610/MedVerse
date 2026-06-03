@@ -1,6 +1,8 @@
 import { apiRequest } from '@/lib/api/http';
-import { resolveDemoRole } from '@/lib/auth/roles';
-import { saveAuthSession } from '@/lib/auth/auth-storage';
+import {
+    buildAuthSession,
+    saveAuthSession,
+} from '@/lib/auth/auth-storage';
 import type { AuthResponse, LoginRequest } from '@/types/auth';
 
 export async function login(request: LoginRequest) {
@@ -10,17 +12,15 @@ export async function login(request: LoginRequest) {
         auth: false,
     });
 
-    const role = resolveDemoRole(request.email);
+    const session = buildAuthSession(response.data);
 
-    saveAuthSession({
-        email: request.email,
-        role,
-        accessToken: response.data.accessToken,
-        refreshToken: response.data.refreshToken,
-    });
+    saveAuthSession(session);
 
     return {
         ...response.data,
-        role,
+        role: session.role,
+        primaryRole: session.primaryRole,
+        roles: session.roles,
+        permissions: session.permissions,
     };
 }

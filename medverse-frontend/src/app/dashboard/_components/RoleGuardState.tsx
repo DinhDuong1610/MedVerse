@@ -3,30 +3,82 @@
 import { Alert, Button, Card } from 'antd';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import type { AuthSession, DemoRole } from '@/types/auth';
+import {
+    hasAllPermissions,
+    hasAnyPermission,
+    hasAnyRole,
+} from '@/lib/auth/roles';
+import type { AuthSession } from '@/types/auth';
 import styles from '../dashboard.module.scss';
 
 type RoleGuardStateProps = {
     session: AuthSession;
-    allow: DemoRole[];
+
+    /**
+     * Legacy alias cho các page cũ:
+     * <RoleGuardState allow={['ADMIN']} />
+     */
+    allow?: string[];
+
+    anyRoles?: string[];
+    anyPermissions?: string[];
+    allPermissions?: string[];
+
     children: ReactNode;
 };
 
 export default function RoleGuardState({
     session,
     allow,
+    anyRoles,
+    anyPermissions,
+    allPermissions,
     children,
 }: RoleGuardStateProps) {
-    if (!allow.includes(session.role)) {
+    const requiredRoles = anyRoles || allow;
+
+    const roleAllowed = hasAnyRole(session, requiredRoles);
+    const anyPermissionAllowed = hasAnyPermission(session, anyPermissions);
+    const allPermissionAllowed = hasAllPermissions(session, allPermissions);
+
+    const allowed = roleAllowed && anyPermissionAllowed && allPermissionAllowed;
+
+    if (!allowed) {
         return (
             <Card className={styles.detailCard}>
                 <Alert
                     type="warning"
                     showIcon
-                    message="Không đúng quyền truy cập"
-                    description={`Trang này dành cho vai trò: ${allow.join(
-                        ', ',
-                    )}. Tài khoản hiện tại là: ${session.role}.`}
+                    message="Không đủ quyền truy cập"
+                    description={
+                        <div>
+                            <p>
+                                Tài khoản hiện tại không có quyền truy cập trang
+                                hoặc thao tác này.
+                            </p>
+
+                            {requiredRoles && requiredRoles.length > 0 && (
+                                <p>
+                                    Vai trò yêu cầu:{' '}
+                                    <b>{requiredRoles.join(', ')}</b>
+                                </p>
+                            )}
+
+                            {anyPermissions && anyPermissions.length > 0 && (
+                                <p>
+                                    Cần một trong các quyền:{' '}
+                                    <b>{anyPermissions.join(', ')}</b>
+                                </p>
+                            )}
+
+                            {allPermissions && allPermissions.length > 0 && (
+                                <p>
+                                    Cần đủ các quyền:{' '}
+                                    <b>{allPermissions.join(', ')}</b>
+                                </p>
+                            )}
+                        </div>
+                    }
                 />
 
                 <div style={{ marginTop: 16 }}>

@@ -1,4 +1,8 @@
-import type { AuthSession } from '@/types/auth';
+import {
+    getPrimaryRole,
+    normalizeKnownRole,
+} from '@/lib/auth/roles';
+import type { AuthResponse, AuthSession } from '@/types/auth';
 
 const ACCESS_TOKEN_KEY = 'mv_access_token';
 const REFRESH_TOKEN_KEY = 'mv_refresh_token';
@@ -18,6 +22,22 @@ function clearCookie(name: string) {
     if (!isBrowser()) return;
 
     document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+export function buildAuthSession(auth: AuthResponse): AuthSession {
+    const primaryRole = auth.primaryRole || getPrimaryRole(auth.roles);
+
+    return {
+        userId: auth.userId,
+        email: auth.email,
+        fullName: auth.fullName,
+        roles: auth.roles || [],
+        permissions: auth.permissions || [],
+        primaryRole,
+        role: normalizeKnownRole(primaryRole),
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+    };
 }
 
 export function saveAuthSession(session: AuthSession) {
@@ -56,5 +76,6 @@ export function clearAuthSession() {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(SESSION_KEY);
+
     clearCookie(ACCESS_TOKEN_KEY);
 }

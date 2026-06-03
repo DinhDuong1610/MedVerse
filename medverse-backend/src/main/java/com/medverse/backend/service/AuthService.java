@@ -19,13 +19,12 @@ import com.medverse.backend.utils.enumeration.UserStatus;
 import com.medverse.backend.utils.exception.DuplicateResourceException;
 import com.medverse.backend.utils.exception.ResourceNotFoundException;
 import com.medverse.backend.utils.exception.TokenRefreshException;
-
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -34,6 +33,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -114,17 +114,20 @@ public class AuthService {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
 
-        var user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + request.getEmail()));
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new IllegalStateException("Account is not active. Please verify your email first.");
         }
 
-        var accessToken = jwtService.generateAccessToken(user);
-        var refreshToken = createAndSaveRefreshToken(user);
+        user.setLastLoginAt(OffsetDateTime.now());
+        userRepository.save(user);
 
-        return new AuthResponse(accessToken, refreshToken.getToken());
+        String accessToken = jwtService.generateAccessToken(user);
+        RefreshToken refreshToken = createAndSaveRefreshToken(user);
+
+        return buildAuthResponse(user, accessToken, refreshToken.getToken());
     }
 
     @Transactional
@@ -136,8 +139,9 @@ public class AuthService {
                 .map(RefreshToken::getUser)
                 .map(user -> {
                     String newAccessToken = jwtService.generateAccessToken(user);
-                    return new AuthResponse(newAccessToken, requestRefreshToken);
-                }).orElseThrow(
+                    return buildAuthResponse(user, newAccessToken, requestRefreshToken);
+                })
+                .orElseThrow(
                         () -> new TokenRefreshException(requestRefreshToken, "Refresh token not found in database!"));
     }
 
@@ -148,6 +152,7 @@ public class AuthService {
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUser(user);
         refreshToken.setToken(tokenString);
+
         Date expiryDate = jwtService.extractExpiration(tokenString);
         refreshToken.setExpiryDate(OffsetDateTime.ofInstant(expiryDate.toInstant(), ZoneOffset.UTC));
 
@@ -160,6 +165,49 @@ public class AuthService {
             throw new TokenRefreshException(token.getToken(),
                     "Refresh token was expired. Please make a new signin request");
         }
+
         return token;
+    }
+
+    private AuthResponse buildAuthResponse(User user, String accessToken, String refreshToken) {
+        List<String> roles = user.getUserRoles()
+                .stream()
+                .map(UserRole::getRole)
+                .map(Role::getCode)
+                .distinct()
+                .sorted()
+                .toList();
+
+        List<String> permissions = user.getAuthorities()
+                .stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(authority -> !authority.startsWith("ROLE_"))
+                .distinct()
+                .sorted()
+                .toList();
+
+        String fullName = user.getUserProfile() != null
+                ? user.getUserProfile().getFullName()
+                : null;
+
+        return AuthResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .userId(user.getId())
+                .email(user.getEmail())
+                .fullName(fullName)
+                .primaryRole(resolvePrimaryRole(roles))
+                .roles(roles)
+                .permissions(permissions)
+                .build();
+    }
+
+    private String resolvePrimaryRole(List<String> roles) {
+        List<String> priority = List.of("ADMIN", "DOCTOR", "RECEPTIONIST", "PATIENT");
+
+        return priority.stream()
+                .filter(roles::contains)
+                .findFirst()
+                .orElseGet(() -> roles.isEmpty() ? "PATIENT" : roles.get(0));
     }
 }
