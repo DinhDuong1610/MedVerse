@@ -13,6 +13,7 @@ import {
 } from '@/services/prescription.service';
 import type { Appointment, MedicalRecord, Prescription } from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
+import Link from 'next/link';
 
 type DoctorCase = {
     appointment: Appointment;
@@ -124,6 +125,10 @@ export default function DoctorCasesPage() {
                                     ) : (
                                         <Button disabled>Chưa có đơn thuốc</Button>
                                     )}
+
+                                    <Link href={`/dashboard/doctor/cases/${item.appointment.id}`}>
+                                        <Button type="primary">Mở ca khám</Button>
+                                    </Link>
                                 </div>
 
                                 {item.prescription?.safetyAlerts?.length ? (
