@@ -213,3 +213,12 @@ export type WorkSlot = {
     endTime: string;
     status: WorkSlotStatus;
 };
+
+export type AppointmentRequestCreatePayload = {
+    doctorId?: string;
+    specialtyId?: string;
+    desiredDate: string;
+    desiredTime?: string;
+    type: 'ONLINE' | 'OFFLINE';
+    symptoms?: string;
+};

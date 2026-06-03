@@ -20,6 +20,7 @@ import type {
     Prescription,
 } from '@/types/clinical';
 import styles from '../dashboard.module.scss';
+import Link from 'next/link';
 
 export default function PatientDashboard() {
     const [loading, setLoading] = useState(true);
@@ -228,6 +229,23 @@ export default function PatientDashboard() {
                         ))}
                     </div>
                 )}
+            </section>
+            <section className={styles.clinicalPanel}>
+                <div className={styles.panelHeader}>
+                    <div>
+                        <span>Booking</span>
+                        <h2>Đặt lịch khám mới</h2>
+                    </div>
+
+                    <Link href="/dashboard/patient/book-appointment">
+                        <Button type="primary">Đặt lịch ngay</Button>
+                    </Link>
+                </div>
+
+                <p style={{ color: '#6a7c7a', lineHeight: 1.7 }}>
+                    Gửi yêu cầu khám để lễ tân xác nhận, chọn slot bác sĩ và tạo lịch hẹn
+                    chính thức cho bạn.
+                </p>
             </section>
         </div>
     );
