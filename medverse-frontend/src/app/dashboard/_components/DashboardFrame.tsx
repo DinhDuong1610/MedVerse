@@ -128,6 +128,13 @@ const NAV_ITEMS: NavItem[] = [
         anyRoles: ['ADMIN'],
     },
     {
+        label: 'Bác sĩ',
+        href: '/dashboard/admin/doctors',
+        icon: <UserOutlined />,
+        anyPermissions: ['ADMIN_PANEL:ACCESS'],
+        anyRoles: ['ADMIN'],
+    },
+    {
         label: 'Người dùng',
         href: '/dashboard/admin/users',
         icon: <UserOutlined />,
