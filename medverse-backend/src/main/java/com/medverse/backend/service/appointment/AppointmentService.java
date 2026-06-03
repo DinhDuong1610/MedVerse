@@ -16,6 +16,8 @@ import com.medverse.backend.utils.exception.DuplicateResourceException;
 import com.medverse.backend.utils.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.medverse.backend.entity.User;
+import org.springframework.security.core.GrantedAuthority;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,9 +38,21 @@ public class AppointmentService {
     private final AppointmentMapper appointmentMapper;
     private final AuditService auditService;
 
-    public AppointmentDto getAppointmentById(UUID id) {
+    public AppointmentDto getAppointmentById(UUID id, User currentUser) {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", id));
+
+        boolean canReadAny = hasAuthority(currentUser, "APPOINTMENT:READ_ANY");
+        boolean isOwner = appointment.getPatient() != null
+                && appointment.getPatient().getId().equals(currentUser.getId());
+
+        boolean isDoctor = appointment.getDoctor() != null
+                && appointment.getDoctor().getId().equals(currentUser.getId());
+
+        if (!canReadAny && !isOwner && !isDoctor) {
+            throw new IllegalStateException("You are not authorized to view this appointment.");
+        }
+
         return appointmentMapper.toDto(appointment);
     }
 
@@ -98,17 +112,27 @@ public class AppointmentService {
 
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
-        // auditService.record("APPROVE_APPOINTMENT", "APPOINTMENT",
-        // savedAppointment.getId().toString(),
-        // "Approved request " + requestId);
+        auditService.record(
+                "APPROVE_APPOINTMENT",
+                "APPOINTMENT",
+                savedAppointment.getId().toString(),
+                "Approved request " + requestId + " with slot " + workSlotId);
 
         return appointmentMapper.toDto(savedAppointment);
     }
 
     @Transactional
-    public void cancelAppointment(UUID appointmentId, String reason) {
+    public void cancelAppointment(UUID appointmentId, String reason, User currentUser) {
         Appointment appointment = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Appointment", "id", appointmentId));
+
+        boolean canWriteAny = hasAuthority(currentUser, "APPOINTMENT:WRITE_ANY");
+        boolean isOwner = appointment.getPatient() != null
+                && appointment.getPatient().getId().equals(currentUser.getId());
+
+        if (!canWriteAny && !isOwner) {
+            throw new IllegalStateException("You are not authorized to cancel this appointment.");
+        }
 
         if (appointment.getStatus() == AppointmentStatus.CANCELLED
                 || appointment.getStatus() == AppointmentStatus.COMPLETED) {
@@ -125,8 +149,11 @@ public class AppointmentService {
             workSlotRepository.save(slot);
         }
 
-        // auditService.record("CANCEL_APPOINTMENT", "APPOINTMENT",
-        // appointmentId.toString(), "Reason: " + reason);
+        auditService.record(
+                "CANCEL_APPOINTMENT",
+                "APPOINTMENT",
+                appointmentId.toString(),
+                "Reason: " + reason);
     }
 
     @Transactional
@@ -137,8 +164,11 @@ public class AppointmentService {
         appointment.setStatus(AppointmentStatus.NO_SHOW);
         appointmentRepository.save(appointment);
 
-        // auditService.record("MARK_NO_SHOW", "APPOINTMENT", appointmentId.toString(),
-        // "Patient did not show up");
+        auditService.record(
+                "MARK_NO_SHOW",
+                "APPOINTMENT",
+                appointmentId.toString(),
+                "Patient did not show up");
     }
 
     @Transactional
@@ -178,10 +208,23 @@ public class AppointmentService {
 
         Appointment updatedAppointment = appointmentRepository.save(appointment);
 
-        // auditService.record("RESCHEDULE_APPOINTMENT", "APPOINTMENT",
-        // appointmentId.toString(),
-        // "Rescheduled to new slot: " + newWorkSlotId);
+        auditService.record(
+                "RESCHEDULE_APPOINTMENT",
+                "APPOINTMENT",
+                appointmentId.toString(),
+                "Rescheduled to new slot: " + newWorkSlotId);
 
         return appointmentMapper.toDto(updatedAppointment);
+    }
+
+    private boolean hasAuthority(User user, String authority) {
+        if (user == null || user.getAuthorities() == null) {
+            return false;
+        }
+
+        return user.getAuthorities()
+                .stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(authority::equals);
     }
 }

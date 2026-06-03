@@ -82,9 +82,11 @@ public class AppointmentRequestService {
 
         AppointmentRequest savedRequest = requestRepository.save(request);
 
-        // auditService.record("CREATE_APPOINTMENT_REQUEST", "APPOINTMENT_REQUEST",
-        // savedRequest.getId().toString(),
-        // "Patient requested appointment for date: " + dto.getDesiredDate());
+        auditService.record(
+                "CREATE_APPOINTMENT_REQUEST",
+                "APPOINTMENT_REQUEST",
+                savedRequest.getId().toString(),
+                "Patient " + patientId + " requested appointment for date: " + dto.getDesiredDate());
 
         return appointmentMapper.toDto(savedRequest);
     }
@@ -116,9 +118,11 @@ public class AppointmentRequestService {
         request.setStatus(AppointmentRequestStatus.CANCELLED);
         requestRepository.save(request);
 
-        // auditService.record("CANCEL_APPOINTMENT_REQUEST", "APPOINTMENT_REQUEST",
-        // requestId.toString(),
-        // "Cancelled by patient");
+        auditService.record(
+                "CANCEL_APPOINTMENT_REQUEST",
+                "APPOINTMENT_REQUEST",
+                requestId.toString(),
+                "Patient " + patientId + " cancelled appointment request");
     }
 
     @Transactional
@@ -134,9 +138,11 @@ public class AppointmentRequestService {
         request.setRejectionReason(reason);
         AppointmentRequest saved = requestRepository.save(request);
 
-        // auditService.record("REJECT_APPOINTMENT_REQUEST", "APPOINTMENT_REQUEST",
-        // requestId.toString(),
-        // "Reason: " + reason);
+        auditService.record(
+                "REJECT_APPOINTMENT_REQUEST",
+                "APPOINTMENT_REQUEST",
+                requestId.toString(),
+                "Reason: " + reason);
 
         return appointmentMapper.toDto(saved);
     }

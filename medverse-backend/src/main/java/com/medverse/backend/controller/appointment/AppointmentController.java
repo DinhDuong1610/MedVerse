@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import com.medverse.backend.entity.User;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
@@ -35,10 +37,11 @@ public class AppointmentController {
     @PreAuthorize("hasAuthority('APPOINTMENT:WRITE_ANY') or hasAuthority('APPOINTMENT:WRITE_OWN')")
     @Operation(summary = "Cancel appointment", description = "Patient or Staff cancels an appointment.")
     public ResponseEntity<AppResponse<Void>> cancelAppointment(
+            @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
             @RequestBody String reason) {
 
-        appointmentService.cancelAppointment(id, reason);
+        appointmentService.cancelAppointment(id, reason, currentUser);
         return ResponseEntity.ok(new AppResponse<>("SUCCESS", "Appointment cancelled.", null, null));
     }
 
@@ -70,8 +73,11 @@ public class AppointmentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('APPOINTMENT:READ_ANY') or hasAuthority('APPOINTMENT:READ_OWN')")
     @Operation(summary = "Get appointment detail", description = "Get full details of a specific appointment.")
-    public ResponseEntity<AppResponse<AppointmentDto>> getAppointmentById(@PathVariable UUID id) {
-        AppointmentDto dto = appointmentService.getAppointmentById(id);
+    public ResponseEntity<AppResponse<AppointmentDto>> getAppointmentById(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID id) {
+
+        AppointmentDto dto = appointmentService.getAppointmentById(id, currentUser);
         return ResponseEntity.ok(new AppResponse<>("SUCCESS", "Appointment detail retrieved.", dto, null));
     }
 
