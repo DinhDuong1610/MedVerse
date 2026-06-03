@@ -9,6 +9,7 @@ import {
     RobotOutlined,
     UserOutlined,
     BellOutlined,
+    AppstoreOutlined,
 } from '@ant-design/icons';
 import { Button, Tag } from 'antd';
 import Link from 'next/link';
@@ -85,6 +86,16 @@ const navByRole: Record<
         {
             label: 'Nhập kho',
             href: '/dashboard/admin/inventory/import',
+            icon: <FileProtectOutlined />,
+        },
+        {
+            label: 'Giám sát hệ thống',
+            href: '/dashboard/admin/system',
+            icon: <AppstoreOutlined />,
+        },
+        {
+            label: 'Audit Logs',
+            href: '/dashboard/admin/audit-logs',
             icon: <FileProtectOutlined />,
         },
     ],
