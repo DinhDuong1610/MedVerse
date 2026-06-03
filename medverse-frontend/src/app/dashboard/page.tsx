@@ -1,45 +1,17 @@
 'use client';
 
-import {
-    ApiOutlined,
-    CalendarOutlined,
-    FileProtectOutlined,
-    LogoutOutlined,
-    MedicineBoxOutlined,
-    RobotOutlined,
-    TeamOutlined,
-} from '@ant-design/icons';
+import { LogoutOutlined } from '@ant-design/icons';
 import { Button, Tag } from 'antd';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import MedVerseMark from '@/components/brand/MedVerseMark';
 import { clearAuthSession, getAuthSession } from '@/lib/auth/auth-storage';
 import { getRoleLabel } from '@/lib/auth/roles';
 import type { AuthSession } from '@/types/auth';
+import DoctorDashboard from './_components/DoctorDashboard';
+import PatientDashboard from './_components/PatientDashboard';
+import StaffDashboardPlaceholder from './_components/StaffDashboardPlaceholder';
 import styles from './dashboard.module.scss';
-
-const roleModules = {
-    ADMIN: [
-        ['Nhân sự', 'Quản lý bác sĩ, lễ tân và phân quyền', TeamOutlined],
-        ['Kho thuốc', 'Theo dõi thuốc, lô nhập và tồn kho', MedicineBoxOutlined],
-        ['AI Health', 'Kiểm tra trạng thái AI service', RobotOutlined],
-    ],
-    DOCTOR: [
-        ['Lịch khám', 'Theo dõi lịch hẹn và ca khám hôm nay', CalendarOutlined],
-        ['Bệnh án điện tử', 'Ghi nhận triệu chứng, chẩn đoán và ICD', FileProtectOutlined],
-        ['Đơn thuốc + AI', 'Kê đơn và chạy kiểm tra an toàn thuốc', RobotOutlined],
-    ],
-    RECEPTIONIST: [
-        ['Yêu cầu đặt lịch', 'Duyệt request và gán lịch khám', CalendarOutlined],
-        ['Bệnh nhân', 'Tra cứu hồ sơ bệnh nhân', TeamOutlined],
-        ['Đơn thuốc', 'Xem và hỗ trợ in đơn thuốc', MedicineBoxOutlined],
-    ],
-    PATIENT: [
-        ['Lịch hẹn của tôi', 'Theo dõi lịch khám và trạng thái yêu cầu', CalendarOutlined],
-        ['Hồ sơ y tế', 'Thông tin nền, dị ứng và bệnh sử', FileProtectOutlined],
-        ['Đơn thuốc', 'Xem đơn thuốc sau buổi khám', MedicineBoxOutlined],
-    ],
-} as const;
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -56,20 +28,12 @@ export default function DashboardPage() {
         setSession(current);
     }, [router]);
 
-    const modules = useMemo(() => {
-        if (!session) return [];
-
-        return roleModules[session.role];
-    }, [session]);
-
     const logout = () => {
         clearAuthSession();
         router.replace('/login');
     };
 
-    if (!session) {
-        return null;
-    }
+    if (!session) return null;
 
     return (
         <main className={styles.dashboardShell}>
@@ -77,26 +41,11 @@ export default function DashboardPage() {
                 <MedVerseMark compact />
 
                 <nav className={styles.nav}>
-                    <button className={styles.navItemActive}>
-                        <ApiOutlined />
-                        Tổng quan
-                    </button>
-                    <button className={styles.navItem}>
-                        <CalendarOutlined />
-                        Lịch khám
-                    </button>
-                    <button className={styles.navItem}>
-                        <FileProtectOutlined />
-                        Bệnh án
-                    </button>
-                    <button className={styles.navItem}>
-                        <MedicineBoxOutlined />
-                        Đơn thuốc
-                    </button>
-                    <button className={styles.navItem}>
-                        <RobotOutlined />
-                        AI
-                    </button>
+                    <button className={styles.navItemActive}>Tổng quan</button>
+                    <button className={styles.navItem}>Lịch khám</button>
+                    <button className={styles.navItem}>Bệnh án</button>
+                    <button className={styles.navItem}>Đơn thuốc</button>
+                    <button className={styles.navItem}>AI</button>
                 </nav>
 
                 <div className={styles.sidebarFooter}>
@@ -108,8 +57,8 @@ export default function DashboardPage() {
             <section className={styles.mainArea}>
                 <header className={styles.topbar}>
                     <div>
-                        <Tag color="cyan">Demo workspace</Tag>
-                        <h1>Xin chào, {getRoleLabel(session.role)}</h1>
+                        <Tag color="cyan">Role-based workspace</Tag>
+                        <h1>{getRoleLabel(session.role)}</h1>
                         <p>{session.email}</p>
                     </div>
 
@@ -120,31 +69,27 @@ export default function DashboardPage() {
 
                 <section className={styles.heroCard}>
                     <div>
-                        <span>MedVerse Control Plane</span>
-                        <h2>Nền giao diện đã sẵn sàng để dựng dashboard theo vai trò.</h2>
+                        <span>MedVerse clinical workspace</span>
+                        <h2>
+                            Dashboard được cá nhân hóa theo vai trò và dữ liệu thật từ backend.
+                        </h2>
                         <p>
-                            Task 9 tập trung vào auth, API client và layout. Các màn nghiệp vụ
-                            sẽ nối vào shell này ở những task tiếp theo.
+                            Giao diện này dùng dữ liệu seed demo để trình bày luồng bệnh nhân,
+                            bác sĩ, bệnh án điện tử, đơn thuốc và AI safety check.
                         </p>
                     </div>
 
                     <div className={styles.pulseCard}>
-                        <strong>AI</strong>
-                        <span>Connected / Fallback ready</span>
+                        <strong>{session.role}</strong>
+                        <span>Connected to MedVerse API</span>
                     </div>
                 </section>
 
-                <section className={styles.moduleGrid}>
-                    {modules.map(([title, description, Icon]) => (
-                        <article key={title} className={styles.moduleCard}>
-                            <div className={styles.iconBox}>
-                                <Icon />
-                            </div>
-                            <h3>{title}</h3>
-                            <p>{description}</p>
-                        </article>
-                    ))}
-                </section>
+                {session.role === 'PATIENT' && <PatientDashboard />}
+                {session.role === 'DOCTOR' && <DoctorDashboard />}
+                {(session.role === 'ADMIN' || session.role === 'RECEPTIONIST') && (
+                    <StaffDashboardPlaceholder role={session.role} />
+                )}
             </section>
         </main>
     );
