@@ -108,3 +108,43 @@ export type AiHealth = {
     fallbackEnabled: boolean;
     modules?: Record<string, string>;
 };
+
+export type Medication = {
+    id: string;
+    code: string;
+    name: string;
+    activeIngredient?: string;
+    atcCode?: string;
+    unit?: string;
+    packingSpecification?: string;
+    usageInstruction?: string;
+    contraindication?: string;
+};
+
+export type AiAtcSuggestion = {
+    code?: string;
+    atcCode?: string;
+    name?: string;
+    label?: string;
+    score?: number;
+};
+
+export type AiIcdSuggestion = {
+    code?: string;
+    icdCode?: string;
+
+    title?: string;
+    name?: string;
+    display?: string;
+    icdDisplay?: string;
+    label?: string;
+
+    score?: number;
+};
+
+export type AiAutocompleteResponse<T> = {
+    query?: string;
+    suggestions?: T[];
+    results?: T[];
+    data?: T[];
+};

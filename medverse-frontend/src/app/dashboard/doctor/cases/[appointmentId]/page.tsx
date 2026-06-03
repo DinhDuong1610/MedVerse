@@ -32,9 +32,10 @@ import {
     getPrescriptionByMedicalRecord,
     runPrescriptionSafetyCheck,
 } from '@/services/prescription.service';
-import { searchMedications, type Medication } from '@/services/medication.service';
 import type { Appointment, MedicalRecord, Prescription } from '@/types/clinical';
 import styles from '../../../dashboard.module.scss';
+import MedicationSmartSelect from './_components/MedicationSmartSelect';
+import DiagnosisAiSuggest from './_components/DiagnosisAiSuggest';
 
 type PageProps = {
     params: {
@@ -77,7 +78,6 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
     const [appointment, setAppointment] = useState<Appointment | null>(null);
     const [medicalRecord, setMedicalRecord] = useState<MedicalRecord | null>(null);
     const [prescription, setPrescription] = useState<Prescription | null>(null);
-    const [medications, setMedications] = useState<Medication[]>([]);
     const [submitting, setSubmitting] = useState(false);
 
     const appointmentId = params.appointmentId;
@@ -119,8 +119,6 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                 }
             }
 
-            const medicationData = await searchMedications('');
-            setMedications(medicationData);
         } finally {
             setLoading(false);
         }
@@ -355,6 +353,15 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                 </Card>
 
                 <Card className={styles.detailCard} title="Chẩn đoán ICD">
+                    <DiagnosisAiSuggest
+                        onPick={(item) => {
+                            diagnosisForm.setFieldsValue({
+                                diagnosisText: item.diagnosisText,
+                                icdCode: item.icdCode,
+                                icdDisplay: item.icdDisplay,
+                            });
+                        }}
+                    />
                     <Form
                         form={diagnosisForm}
                         layout="vertical"
@@ -457,28 +464,24 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                     name="medicationId"
                                     rules={[{ required: true, message: 'Chọn thuốc' }]}
                                 >
-                                    <Select
-                                        showSearch
-                                        placeholder="Chọn thuốc"
-                                        optionFilterProp="label"
-                                        options={medications.map((medication) => ({
-                                            label: `${medication.name} (${medication.code})`,
-                                            value: medication.id,
-                                        }))}
-                                    />
+                                    <MedicationSmartSelect />
                                 </Form.Item>
 
                                 <Space.Compact style={{ width: '100%' }}>
-                                    <Form.Item name="dosage" style={{ width: '25%' }}>
+                                    <Form.Item name="dosage" rules={[{ required: true, message: 'Nhập liều dùng' }]} style={{ width: '25%' }}>
                                         <Input placeholder="500mg" />
                                     </Form.Item>
-                                    <Form.Item name="frequency" style={{ width: '25%' }}>
+                                    <Form.Item name="frequency" rules={[{ required: true, message: 'Nhập tần suất' }]} style={{ width: '25%' }}>
                                         <Input placeholder="2 lần/ngày" />
                                     </Form.Item>
-                                    <Form.Item name="duration" style={{ width: '25%' }}>
+                                    <Form.Item name="duration" rules={[{ required: true, message: 'Nhập thời gian sử dụng' }]} style={{ width: '25%' }}>
                                         <Input placeholder="3 ngày" />
                                     </Form.Item>
-                                    <Form.Item name="quantity" style={{ width: '25%' }}>
+                                    <Form.Item
+                                        name="quantity"
+                                        rules={[{ required: true, message: 'Nhập số lượng' }]}
+                                        style={{ width: '25%' }}
+                                    >
                                         <InputNumber
                                             style={{ width: '100%' }}
                                             min={1}
