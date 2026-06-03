@@ -272,3 +272,29 @@ export type AppNotification = {
     readAt?: string;
     createdAt?: string;
 };
+
+export type AuditLog = {
+    id: string;
+    actorId?: string;
+    actorEmail?: string;
+
+    action: string;
+    entityType?: string;
+    entityId?: string;
+
+    result: string;
+    details?: string;
+
+    occurredAt?: string;
+};
+
+export type AdminSystemSummary = {
+    userCount: number;
+    auditLogCount: number;
+    notificationCount: number;
+    medicationCount: number;
+    appointmentCount: number;
+
+    backendStatus: string;
+    databaseStatus: string;
+};
