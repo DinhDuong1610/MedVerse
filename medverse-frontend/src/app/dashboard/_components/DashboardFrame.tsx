@@ -120,7 +120,13 @@ const NAV_ITEMS: NavItem[] = [
         icon: <FileProtectOutlined />,
         anyPermissions: ['APPOINTMENT:READ_ANY'],
     },
-
+    {
+        label: 'Chuyên khoa',
+        href: '/dashboard/admin/specialties',
+        icon: <MedicineBoxOutlined />,
+        anyPermissions: ['ADMIN_PANEL:ACCESS'],
+        anyRoles: ['ADMIN'],
+    },
     {
         label: 'Người dùng',
         href: '/dashboard/admin/users',

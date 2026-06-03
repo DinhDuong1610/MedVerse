@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import com.medverse.backend.entity.User;
 import com.medverse.backend.payload.admin.AdminUpdateUserStatusRequest;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.medverse.backend.payload.admin.AdminUpdateDoctorProfileRequest;
 
 import java.util.UUID;
 
@@ -73,5 +74,17 @@ public class AdminUserController {
 
         return ResponseEntity.ok(
                 new AppResponse<>("SUCCESS", "User status updated.", result, null));
+    }
+
+    @PutMapping("/{id}/doctor-profile")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AppResponse<AdminUserDto>> updateDoctorProfile(
+            @PathVariable UUID id,
+            @Valid @RequestBody AdminUpdateDoctorProfileRequest request) {
+
+        AdminUserDto result = adminUserService.updateDoctorProfile(id, request);
+
+        return ResponseEntity.ok(
+                new AppResponse<>("SUCCESS", "Doctor profile updated.", result, null));
     }
 }

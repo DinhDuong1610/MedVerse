@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/api/http';
 import type {
     AdminCreateStaffPayload,
+    AdminUpdateDoctorProfilePayload,
     AdminUpdateUserStatusPayload,
     AdminUser,
     AdminUserRoleCode,
@@ -49,6 +50,21 @@ export async function updateAdminUserStatus(
         method: 'PATCH',
         body: payload,
     });
+
+    return res.data;
+}
+
+export async function updateAdminDoctorProfile(
+    id: string,
+    payload: AdminUpdateDoctorProfilePayload,
+) {
+    const res = await apiRequest<AdminUser>(
+        `/v1/admin/users/${id}/doctor-profile`,
+        {
+            method: 'PUT',
+            body: payload,
+        },
+    );
 
     return res.data;
 }

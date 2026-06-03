@@ -27,6 +27,7 @@ import {
     createAdminStaff,
     getAdminUserById,
     getAdminUsers,
+    updateAdminDoctorProfile,
     updateAdminUserStatus,
 } from '@/services/admin-user.service';
 import { getDirectorySpecialties } from '@/services/directory.service';
@@ -50,6 +51,14 @@ type CreateStaffFormValues = {
 
     roleCode: AdminStaffRoleCode;
 
+    specialtyId?: string;
+    licenseNumber?: string;
+    degree?: string;
+    experienceYears?: number;
+    bio?: string;
+};
+
+type DoctorProfileFormValues = {
     specialtyId?: string;
     licenseNumber?: string;
     degree?: string;
@@ -106,7 +115,9 @@ function getNextStatus(status: AdminUserStatus): AdminUserStatus {
     return 'ACTIVE';
 }
 
-function normalizePayload(values: CreateStaffFormValues): AdminCreateStaffPayload {
+function normalizeStaffPayload(
+    values: CreateStaffFormValues,
+): AdminCreateStaffPayload {
     const payload: AdminCreateStaffPayload = {
         email: values.email.trim(),
         password: values.password,
@@ -132,6 +143,7 @@ export default function AdminUsersPage() {
     const { session, loading: authLoading } = useAuthSession();
 
     const [form] = Form.useForm<CreateStaffFormValues>();
+    const [doctorProfileForm] = Form.useForm<DoctorProfileFormValues>();
     const roleCodeWatch = Form.useWatch('roleCode', form);
 
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -146,6 +158,9 @@ export default function AdminUsersPage() {
     const [detailOpen, setDetailOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
+
+    const [doctorProfileOpen, setDoctorProfileOpen] = useState(false);
+    const [updatingDoctorProfile, setUpdatingDoctorProfile] = useState(false);
 
     const loadUsers = async (nextRole = roleCode) => {
         try {
@@ -231,7 +246,9 @@ export default function AdminUsersPage() {
         try {
             setCreating(true);
 
-            const created = await createAdminStaff(normalizePayload(values));
+            const created = await createAdminStaff(
+                normalizeStaffPayload(values),
+            );
 
             message.success(`Đã tạo tài khoản ${created.email}.`);
             setCreateOpen(false);
@@ -268,9 +285,64 @@ export default function AdminUsersPage() {
         }
     };
 
+    const openDoctorProfileEditor = (user: AdminUser) => {
+        if (!user.roles?.includes('DOCTOR')) {
+            message.warning('Chỉ tài khoản bác sĩ mới có hồ sơ bác sĩ.');
+            return;
+        }
+
+        setSelectedUser(user);
+
+        doctorProfileForm.setFieldsValue({
+            specialtyId: user.specialtyId,
+            licenseNumber: user.licenseNumber || '',
+            degree: user.degree || '',
+            experienceYears: user.experienceYears,
+            bio: user.bio || '',
+        });
+
+        setDoctorProfileOpen(true);
+    };
+
+    const handleUpdateDoctorProfile = async (
+        values: DoctorProfileFormValues,
+    ) => {
+        if (!selectedUser) return;
+
+        try {
+            setUpdatingDoctorProfile(true);
+
+            const updated = await updateAdminDoctorProfile(selectedUser.id, {
+                specialtyId: values.specialtyId,
+                licenseNumber: values.licenseNumber?.trim() || undefined,
+                degree: values.degree?.trim() || undefined,
+                experienceYears: values.experienceYears,
+                bio: values.bio?.trim() || undefined,
+            });
+
+            message.success('Đã cập nhật hồ sơ bác sĩ.');
+
+            setSelectedUser(updated);
+            setDoctorProfileOpen(false);
+            doctorProfileForm.resetFields();
+
+            await loadUsers();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể cập nhật hồ sơ bác sĩ.',
+            );
+        } finally {
+            setUpdatingDoctorProfile(false);
+        }
+    };
+
     const handleUpdateStatus = async (user: AdminUser) => {
         if (isCurrentSessionUser(user)) {
-            message.warning('Bạn không thể tự khóa hoặc đổi trạng thái tài khoản của chính mình.');
+            message.warning(
+                'Bạn không thể tự khóa hoặc đổi trạng thái tài khoản của chính mình.',
+            );
             return;
         }
 
@@ -318,7 +390,9 @@ export default function AdminUsersPage() {
 
     const handleDisableUser = async (user: AdminUser) => {
         if (isCurrentSessionUser(user)) {
-            message.warning('Bạn không thể tự vô hiệu hóa tài khoản của chính mình.');
+            message.warning(
+                'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.',
+            );
             return;
         }
 
@@ -364,7 +438,7 @@ export default function AdminUsersPage() {
         <DashboardFrame
             session={session}
             title="Quản lý người dùng"
-            subtitle="Tạo tài khoản bác sĩ/lễ tân, theo dõi vai trò và quản lý trạng thái tài khoản"
+            subtitle="Tạo tài khoản bác sĩ/lễ tân, theo dõi vai trò, trạng thái và hồ sơ bác sĩ"
         >
             <RoleGuardState session={session} allow={['ADMIN']}>
                 <section className={styles.metricGrid}>
@@ -391,9 +465,8 @@ export default function AdminUsersPage() {
                             <span>Admin user management</span>
                             <h2>Danh sách tài khoản</h2>
                             <p>
-                                Admin quản lý tài khoản, role, permissions và
-                                trạng thái đăng nhập. MVP cho phép tạo mới
-                                Doctor hoặc Receptionist.
+                                Admin quản lý tài khoản, role, permissions,
+                                trạng thái đăng nhập và hồ sơ bác sĩ.
                             </p>
                         </div>
 
@@ -514,6 +587,11 @@ export default function AdminUsersPage() {
                                                                     {user.specialtyName ||
                                                                         'Chưa gán'}
                                                                 </b>{' '}
+                                                                · Học vị:{' '}
+                                                                <b>
+                                                                    {user.degree ||
+                                                                        'Chưa cập nhật'}
+                                                                </b>{' '}
                                                                 · Kinh nghiệm:{' '}
                                                                 <b>
                                                                     {user.experienceYears ||
@@ -534,6 +612,18 @@ export default function AdminUsersPage() {
                                             >
                                                 Chi tiết
                                             </Button>
+
+                                            {user.roles?.includes('DOCTOR') && (
+                                                <Button
+                                                    onClick={() =>
+                                                        openDoctorProfileEditor(
+                                                            user,
+                                                        )
+                                                    }
+                                                >
+                                                    Sửa hồ sơ bác sĩ
+                                                </Button>
+                                            )}
 
                                             <Button
                                                 disabled={isCurrentSessionUser(
@@ -833,6 +923,19 @@ export default function AdminUsersPage() {
                                             Hồ sơ bác sĩ
                                         </h3>
 
+                                        <Button
+                                            type="primary"
+                                            ghost
+                                            onClick={() =>
+                                                openDoctorProfileEditor(
+                                                    selectedUser,
+                                                )
+                                            }
+                                            style={{ marginBottom: 12 }}
+                                        >
+                                            Sửa hồ sơ bác sĩ
+                                        </Button>
+
                                         <p>
                                             Chuyên khoa:{' '}
                                             <b>
@@ -881,6 +984,84 @@ export default function AdminUsersPage() {
                             </div>
                         )}
                     </ClinicalPageState>
+                </Drawer>
+
+                <Drawer
+                    title="Cập nhật hồ sơ bác sĩ"
+                    open={doctorProfileOpen}
+                    width={560}
+                    onClose={() => {
+                        setDoctorProfileOpen(false);
+                        doctorProfileForm.resetFields();
+                    }}
+                    destroyOnClose
+                >
+                    <Form
+                        form={doctorProfileForm}
+                        layout="vertical"
+                        onFinish={handleUpdateDoctorProfile}
+                    >
+                        <Alert
+                            type="info"
+                            showIcon
+                            message="Thông tin này sẽ hiển thị ở danh bạ bác sĩ và luồng bệnh nhân đặt lịch"
+                            style={{ marginBottom: 16 }}
+                        />
+
+                        <Form.Item label="Bác sĩ">
+                            <Input
+                                value={
+                                    selectedUser?.fullName ||
+                                    selectedUser?.email
+                                }
+                                disabled
+                            />
+                        </Form.Item>
+
+                        <Form.Item label="Chuyên khoa" name="specialtyId">
+                            <Select
+                                allowClear
+                                showSearch
+                                placeholder="Chọn chuyên khoa"
+                                optionFilterProp="label"
+                                options={specialties.map((item) => ({
+                                    value: item.id,
+                                    label: item.name,
+                                }))}
+                            />
+                        </Form.Item>
+
+                        <Form.Item label="Số giấy phép" name="licenseNumber">
+                            <Input placeholder="VN-DR-001" />
+                        </Form.Item>
+
+                        <Form.Item label="Học vị" name="degree">
+                            <Input placeholder="BS.CKI, ThS, TS..." />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Số năm kinh nghiệm"
+                            name="experienceYears"
+                        >
+                            <InputNumber min={0} style={{ width: '100%' }} />
+                        </Form.Item>
+
+                        <Form.Item label="Giới thiệu" name="bio">
+                            <Input.TextArea
+                                rows={4}
+                                placeholder="Mô tả kinh nghiệm, thế mạnh chuyên môn..."
+                            />
+                        </Form.Item>
+
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={updatingDoctorProfile}
+                            block
+                        >
+                            Lưu hồ sơ bác sĩ
+                        </Button>
+                    </Form>
                 </Drawer>
             </RoleGuardState>
         </DashboardFrame>

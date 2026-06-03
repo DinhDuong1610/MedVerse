@@ -60,3 +60,11 @@ export type AdminUpdateUserStatusPayload = {
     status: AdminUserStatus;
     reason?: string;
 };
+
+export type AdminUpdateDoctorProfilePayload = {
+    specialtyId?: string;
+    licenseNumber?: string;
+    degree?: string;
+    experienceYears?: number;
+    bio?: string;
+};

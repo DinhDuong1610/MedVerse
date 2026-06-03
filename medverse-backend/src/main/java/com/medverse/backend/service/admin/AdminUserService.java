@@ -25,6 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.medverse.backend.payload.admin.AdminUpdateUserStatusRequest;
+import com.medverse.backend.payload.admin.AdminUpdateDoctorProfileRequest;
 
 import java.util.Comparator;
 import java.util.HashSet;
@@ -206,5 +207,58 @@ public class AdminUserService {
                 .experienceYears(doctorProfile != null ? doctorProfile.getExperienceYears() : null)
                 .bio(doctorProfile != null ? doctorProfile.getBio() : null)
                 .build();
+    }
+
+    @Transactional
+    public AdminUserDto updateDoctorProfile(UUID userId, AdminUpdateDoctorProfileRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+
+        boolean isDoctor = user.getUserRoles()
+                .stream()
+                .anyMatch(userRole -> "DOCTOR".equals(userRole.getRole().getCode()));
+
+        if (!isDoctor) {
+            throw new IllegalStateException("Only DOCTOR users can have doctor profile.");
+        }
+
+        DoctorProfile doctorProfile = doctorProfileRepository.findByUserId(userId)
+                .orElseGet(() -> {
+                    DoctorProfile newProfile = new DoctorProfile();
+                    newProfile.setUser(user);
+                    return newProfile;
+                });
+
+        if (request.getSpecialtyId() != null) {
+            Specialty specialty = specialtyRepository.findById(request.getSpecialtyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Specialty", "id", request.getSpecialtyId()));
+
+            doctorProfile.setSpecialty(specialty);
+        } else {
+            doctorProfile.setSpecialty(null);
+        }
+
+        doctorProfile.setLicenseNumber(normalizeText(request.getLicenseNumber()));
+        doctorProfile.setDegree(normalizeText(request.getDegree()));
+        doctorProfile.setExperienceYears(request.getExperienceYears());
+        doctorProfile.setBio(normalizeText(request.getBio()));
+
+        DoctorProfile savedProfile = doctorProfileRepository.save(doctorProfile);
+
+        auditService.record(
+                "ADMIN_UPDATE_DOCTOR_PROFILE",
+                "DOCTOR_PROFILE",
+                savedProfile.getId().toString(),
+                "Updated doctor profile for user " + user.getEmail());
+
+        return toDto(user);
+    }
+
+    private String normalizeText(String value) {
+        if (value == null || value.trim().isBlank()) {
+            return null;
+        }
+
+        return value.trim();
     }
 }

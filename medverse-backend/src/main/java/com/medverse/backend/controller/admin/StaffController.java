@@ -1,7 +1,6 @@
 package com.medverse.backend.controller.admin;
 
 import com.medverse.backend.payload.AppResponse;
-import com.medverse.backend.payload.staff.SpecialtyDto;
 import com.medverse.backend.payload.staff.StaffCreateRequest;
 import com.medverse.backend.payload.staff.StaffDetailDto;
 import com.medverse.backend.payload.staff.StaffListDto;
@@ -31,7 +30,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -42,16 +40,6 @@ import java.util.UUID;
 public class StaffController {
 
         private final StaffService staffService;
-
-        @GetMapping("/specialties")
-        @PreAuthorize("hasAuthority('STAFF:READ')")
-        @Operation(summary = "Get all medical specialties", description = "Retrieves a list of all available medical specialties.")
-        public ResponseEntity<AppResponse<List<SpecialtyDto>>> getAllSpecialties() {
-                List<SpecialtyDto> specialties = staffService.findAllSpecialties();
-                return ResponseEntity
-                                .ok(new AppResponse<>("SUCCESS", "Specialties retrieved successfully.", specialties,
-                                                null));
-        }
 
         @GetMapping("/staff")
         @PreAuthorize("hasAuthority('STAFF:READ')")
