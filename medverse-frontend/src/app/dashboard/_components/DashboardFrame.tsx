@@ -25,9 +25,31 @@ const navByRole: Record<
 > = {
     PATIENT: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
-        { label: 'Hồ sơ y tế', href: '/dashboard/patient/profile', icon: <HeartOutlined /> },
-        { label: 'Bệnh án', href: '/dashboard/patient/medical-records', icon: <FileProtectOutlined /> },
-        { label: 'Đơn thuốc', href: '/dashboard/patient/prescriptions', icon: <MedicineBoxOutlined /> },
+        {
+            label: 'Đặt lịch',
+            href: '/dashboard/patient/book-appointment',
+            icon: <CalendarOutlined />,
+        },
+        {
+            label: 'Yêu cầu của tôi',
+            href: '/dashboard/patient/appointment-requests',
+            icon: <FileProtectOutlined />,
+        },
+        {
+            label: 'Hồ sơ y tế',
+            href: '/dashboard/patient/profile',
+            icon: <HeartOutlined />,
+        },
+        {
+            label: 'Bệnh án',
+            href: '/dashboard/patient/medical-records',
+            icon: <FileProtectOutlined />,
+        },
+        {
+            label: 'Đơn thuốc',
+            href: '/dashboard/patient/prescriptions',
+            icon: <MedicineBoxOutlined />,
+        },
     ],
     DOCTOR: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },

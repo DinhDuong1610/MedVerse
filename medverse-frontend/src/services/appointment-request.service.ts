@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api/http';
 import type {
     Appointment,
     AppointmentRequest,
+    AppointmentRequestCreatePayload,
     AppointmentRequestStatus,
 } from '@/types/clinical';
 import type { PageResponse } from '@/types/pagination';
@@ -19,6 +20,36 @@ export async function getAppointmentRequests(
 
     const res = await apiRequest<PageResponse<AppointmentRequest>>(
         `/v1/appointment-requests?${params.toString()}`,
+    );
+
+    return res.data;
+}
+
+export async function getMyAppointmentRequests() {
+    const res = await apiRequest<PageResponse<AppointmentRequest>>(
+        '/v1/appointment-requests/me?size=20',
+    );
+
+    return res.data;
+}
+
+export async function createMyAppointmentRequest(
+    payload: AppointmentRequestCreatePayload,
+) {
+    const res = await apiRequest<AppointmentRequest>('/v1/appointment-requests', {
+        method: 'POST',
+        body: payload,
+    });
+
+    return res.data;
+}
+
+export async function cancelMyAppointmentRequest(requestId: string) {
+    const res = await apiRequest<void>(
+        `/v1/appointment-requests/${requestId}/cancel`,
+        {
+            method: 'PATCH',
+        },
     );
 
     return res.data;
