@@ -1,6 +1,7 @@
 'use client';
 
 import {
+    Alert,
     Button,
     Card,
     DatePicker,
@@ -8,16 +9,18 @@ import {
     Input,
     List,
     Modal,
+    Popconfirm,
     Select,
     Space,
     Statistic,
+    Tag,
     message,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
+import DashboardFrame from '../../_components/DashboardFrame';
 import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
 import ClinicalPageState from '../../_components/ClinicalPageState';
-import DashboardFrame from '../../_components/DashboardFrame';
 import RoleGuardState from '../../_components/RoleGuardState';
 import StatusTag from '../../_components/StatusTag';
 import { hasAnyPermission } from '@/lib/auth/roles';
@@ -29,7 +32,11 @@ import {
     rescheduleAppointment,
 } from '@/services/appointment.service';
 import { getAvailableWorkSlots } from '@/services/work-slot.service';
-import type { Appointment, AppointmentStatus, WorkSlot } from '@/types/clinical';
+import type {
+    Appointment,
+    AppointmentStatus,
+    WorkSlot,
+} from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
 
 type AppointmentStatusFilter = AppointmentStatus | 'ALL';
@@ -50,15 +57,55 @@ const statusOptions: Array<{
         { value: 'NO_SHOW', label: 'NO_SHOW' },
     ];
 
-function canChangeAppointment(appointment: Appointment) {
-    return ['SCHEDULED', 'CONFIRMED'].includes(appointment.status);
-}
-
 function getDayRange(date: Dayjs) {
     return {
         from: date.startOf('day').toISOString(),
         to: date.endOf('day').toISOString(),
     };
+}
+
+function formatDateTime(value?: string) {
+    if (!value) return 'Chưa rõ';
+
+    return new Date(value).toLocaleString('vi-VN');
+}
+
+function formatTime(value?: string) {
+    if (!value) return 'Chưa rõ';
+
+    return new Date(value).toLocaleTimeString('vi-VN');
+}
+
+function canModifyAppointment(appointment: Appointment) {
+    return ['SCHEDULED', 'CONFIRMED'].includes(appointment.status);
+}
+
+function getAppointmentOperationalTag(appointment: Appointment) {
+    if (appointment.status === 'CANCELLED') {
+        return <Tag color="red">Đã hủy</Tag>;
+    }
+
+    if (appointment.status === 'NO_SHOW') {
+        return <Tag color="orange">No-show</Tag>;
+    }
+
+    if (appointment.status === 'COMPLETED') {
+        return <Tag color="green">Đã khám xong</Tag>;
+    }
+
+    const start = appointment.startTime
+        ? new Date(appointment.startTime).getTime()
+        : 0;
+
+    if (start && start < Date.now()) {
+        return <Tag color="gold">Đã qua giờ</Tag>;
+    }
+
+    if (appointment.status === 'CONFIRMED') {
+        return <Tag color="cyan">Sẵn sàng khám</Tag>;
+    }
+
+    return <Tag color="blue">Chờ xác nhận</Tag>;
 }
 
 export default function ReceptionistAppointmentsPage() {
@@ -74,17 +121,21 @@ export default function ReceptionistAppointmentsPage() {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const [rescheduleOpen, setRescheduleOpen] = useState(false);
     const [cancelOpen, setCancelOpen] = useState(false);
+    const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
     const [selectedAppointment, setSelectedAppointment] =
         useState<Appointment | null>(null);
     const [availableSlots, setAvailableSlots] = useState<WorkSlot[]>([]);
     const [selectedSlotId, setSelectedSlotId] = useState<string | undefined>();
 
-    const canWriteAppointment = hasAnyPermission(session, [
-        'APPOINTMENT:WRITE_ANY',
-    ]);
+    const canReadAppointments = session
+        ? hasAnyPermission(session, ['APPOINTMENT:READ_ANY'])
+        : false;
+
+    const canWriteAppointments = session
+        ? hasAnyPermission(session, ['APPOINTMENT:WRITE_ANY'])
+        : false;
 
     const loadAppointments = async (
         nextDate = selectedDate,
@@ -99,11 +150,15 @@ export default function ReceptionistAppointmentsPage() {
             const page = await getAppointments({
                 from,
                 to,
-                status: nextStatus,
+                status: nextStatus === 'ALL' ? undefined : nextStatus,
                 size: 100,
             });
 
-            setAppointments(page.content || []);
+            const sorted = [...(page.content || [])].sort((a, b) =>
+                String(a.startTime).localeCompare(String(b.startTime)),
+            );
+
+            setAppointments(sorted);
         } catch (err) {
             setError(
                 err instanceof Error
@@ -118,7 +173,7 @@ export default function ReceptionistAppointmentsPage() {
     useEffect(() => {
         if (!session) return;
 
-        if (!hasAnyPermission(session, ['APPOINTMENT:READ_ANY'])) {
+        if (!canReadAppointments) {
             setError('Tài khoản hiện tại không có quyền xem lịch hẹn.');
             setLoading(false);
             return;
@@ -132,15 +187,19 @@ export default function ReceptionistAppointmentsPage() {
         const scheduled = appointments.filter(
             (item) => item.status === 'SCHEDULED',
         ).length;
+
         const confirmed = appointments.filter(
             (item) => item.status === 'CONFIRMED',
         ).length;
+
         const completed = appointments.filter(
             (item) => item.status === 'COMPLETED',
         ).length;
+
         const cancelled = appointments.filter(
             (item) => item.status === 'CANCELLED',
         ).length;
+
         const noShow = appointments.filter(
             (item) => item.status === 'NO_SHOW',
         ).length;
@@ -167,20 +226,86 @@ export default function ReceptionistAppointmentsPage() {
         loadAppointments(selectedDate, value);
     };
 
+    const openCancelModal = (appointment: Appointment) => {
+        if (!canWriteAppointments) {
+            message.warning('Tài khoản hiện tại không có quyền hủy lịch.');
+            return;
+        }
+
+        setSelectedAppointment(appointment);
+        cancelForm.resetFields();
+        setCancelOpen(true);
+    };
+
+    const handleCancelAppointment = async (values: CancelFormValues) => {
+        if (!selectedAppointment) return;
+
+        try {
+            setActionLoading(selectedAppointment.id);
+
+            await cancelAppointment(selectedAppointment.id, values.reason);
+
+            message.success('Đã hủy lịch hẹn.');
+            setCancelOpen(false);
+            setSelectedAppointment(null);
+            cancelForm.resetFields();
+
+            await loadAppointments();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể hủy lịch hẹn.',
+            );
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleNoShow = async (appointment: Appointment) => {
+        if (!canWriteAppointments) {
+            message.warning('Tài khoản hiện tại không có quyền đánh dấu no-show.');
+            return;
+        }
+
+        try {
+            setActionLoading(appointment.id);
+
+            await markAppointmentNoShow(appointment.id);
+
+            message.success('Đã đánh dấu no-show.');
+            await loadAppointments();
+        } catch (err) {
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể đánh dấu no-show.',
+            );
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const openRescheduleModal = async (appointment: Appointment) => {
+        if (!canWriteAppointments) {
+            message.warning('Tài khoản hiện tại không có quyền đổi lịch.');
+            return;
+        }
+
         if (!appointment.doctorId) {
-            message.warning('Lịch hẹn chưa có bác sĩ để tải slot.');
+            message.warning('Lịch hẹn này chưa có bác sĩ.');
             return;
         }
 
         try {
             setSelectedAppointment(appointment);
-            setAvailableSlots([]);
             setSelectedSlotId(undefined);
+            setAvailableSlots([]);
             setRescheduleOpen(true);
             setActionLoading(appointment.id);
 
             const slots = await getAvailableWorkSlots(appointment.doctorId);
+
             const sortedSlots = [...slots].sort((a, b) =>
                 String(a.startTime).localeCompare(String(b.startTime)),
             );
@@ -226,67 +351,6 @@ export default function ReceptionistAppointmentsPage() {
         }
     };
 
-    const openCancelModal = (appointment: Appointment) => {
-        setSelectedAppointment(appointment);
-        cancelForm.resetFields();
-        setCancelOpen(true);
-    };
-
-    const handleCancel = async (values: CancelFormValues) => {
-        if (!selectedAppointment) return;
-
-        try {
-            setActionLoading(selectedAppointment.id);
-
-            await cancelAppointment(selectedAppointment.id, values.reason);
-
-            message.success('Đã hủy lịch hẹn.');
-            setCancelOpen(false);
-            setSelectedAppointment(null);
-
-            await loadAppointments();
-        } catch (err) {
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : 'Không thể hủy lịch hẹn.',
-            );
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
-    const handleNoShow = (appointment: Appointment) => {
-        Modal.confirm({
-            title: 'Đánh dấu bệnh nhân không đến?',
-            content:
-                'Trạng thái lịch hẹn sẽ được chuyển thành NO_SHOW. Thao tác này nên dùng khi đã quá giờ khám và bệnh nhân không xuất hiện.',
-            okText: 'Đánh dấu NO_SHOW',
-            cancelText: 'Đóng',
-            okButtonProps: {
-                danger: true,
-            },
-            onOk: async () => {
-                try {
-                    setActionLoading(appointment.id);
-
-                    await markAppointmentNoShow(appointment.id);
-
-                    message.success('Đã đánh dấu NO_SHOW.');
-                    await loadAppointments();
-                } catch (err) {
-                    message.error(
-                        err instanceof Error
-                            ? err.message
-                            : 'Không thể đánh dấu NO_SHOW.',
-                    );
-                } finally {
-                    setActionLoading(null);
-                }
-            },
-        });
-    };
-
     if (authLoading || !session) {
         return <ClinicalPageState loading>Loading</ClinicalPageState>;
     }
@@ -294,8 +358,8 @@ export default function ReceptionistAppointmentsPage() {
     return (
         <DashboardFrame
             session={session}
-            title="Điều phối lịch hẹn"
-            subtitle="Theo dõi, đổi lịch, hủy lịch và xử lý no-show"
+            title="Lịch hẹn"
+            subtitle="Quản lý lịch hẹn trong ngày, đổi lịch, hủy lịch và đánh dấu no-show"
         >
             <RoleGuardState
                 session={session}
@@ -307,17 +371,11 @@ export default function ReceptionistAppointmentsPage() {
                     </Card>
 
                     <Card className={styles.metricCard}>
-                        <Statistic
-                            title="Đang chờ"
-                            value={metrics.scheduled}
-                        />
+                        <Statistic title="Scheduled" value={metrics.scheduled} />
                     </Card>
 
                     <Card className={styles.metricCard}>
-                        <Statistic
-                            title="Đã xác nhận"
-                            value={metrics.confirmed}
-                        />
+                        <Statistic title="Confirmed" value={metrics.confirmed} />
                     </Card>
 
                     <Card className={styles.metricCard}>
@@ -330,6 +388,11 @@ export default function ReceptionistAppointmentsPage() {
                         <div>
                             <span>Appointment board</span>
                             <h2>Lịch hẹn theo ngày</h2>
+                            <p>
+                                Lễ tân theo dõi toàn bộ lịch hẹn, hỗ trợ đổi
+                                lịch, hủy lịch hoặc đánh dấu bệnh nhân không đến
+                                khám.
+                            </p>
                         </div>
 
                         <Space wrap>
@@ -352,11 +415,21 @@ export default function ReceptionistAppointmentsPage() {
                         </Space>
                     </div>
 
-                    <ClinicalPageState loading={loading} error={error}>
+                    {error && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message="Không thể tải appointment board"
+                            description={error}
+                            style={{ marginBottom: 16 }}
+                        />
+                    )}
+
+                    <ClinicalPageState loading={loading}>
                         {appointments.length === 0 ? (
                             <ClinicalEmptyState
                                 title="Chưa có lịch hẹn"
-                                description="Không tìm thấy lịch hẹn nào theo bộ lọc hiện tại."
+                                description="Không tìm thấy lịch hẹn nào theo ngày và trạng thái hiện tại."
                             />
                         ) : (
                             <List
@@ -371,11 +444,22 @@ export default function ReceptionistAppointmentsPage() {
                                                             'Bệnh nhân'}
                                                     </strong>
 
-                                                    <StatusTag
-                                                        value={
-                                                            appointment.status
-                                                        }
-                                                    />
+                                                    <Space wrap>
+                                                        <StatusTag
+                                                            value={
+                                                                appointment.status
+                                                            }
+                                                        />
+
+                                                        {getAppointmentOperationalTag(
+                                                            appointment,
+                                                        )}
+
+                                                        <Tag color="cyan">
+                                                            {appointment.type ||
+                                                                'OFFLINE'}
+                                                        </Tag>
+                                                    </Space>
                                                 </div>
                                             }
                                             description={
@@ -384,33 +468,21 @@ export default function ReceptionistAppointmentsPage() {
                                                         Bác sĩ:{' '}
                                                         <b>
                                                             {appointment.doctorName ||
-                                                                'Chưa rõ'}
+                                                                'Chưa rõ bác sĩ'}
                                                         </b>
                                                     </p>
 
                                                     <p>
                                                         Thời gian:{' '}
                                                         <b>
-                                                            {new Date(
+                                                            {formatDateTime(
                                                                 appointment.startTime,
-                                                            ).toLocaleString(
-                                                                'vi-VN',
                                                             )}
                                                         </b>{' '}
                                                         →{' '}
-                                                        {new Date(
+                                                        {formatTime(
                                                             appointment.endTime,
-                                                        ).toLocaleTimeString(
-                                                            'vi-VN',
                                                         )}
-                                                    </p>
-
-                                                    <p>
-                                                        Hình thức:{' '}
-                                                        <b>
-                                                            {appointment.type ||
-                                                                'OFFLINE'}
-                                                        </b>
                                                     </p>
 
                                                     <p>
@@ -418,6 +490,30 @@ export default function ReceptionistAppointmentsPage() {
                                                         {appointment.diagnosis ||
                                                             'Chưa có ghi chú.'}
                                                     </p>
+
+                                                    <div
+                                                        className={
+                                                            styles.caseMeta
+                                                        }
+                                                    >
+                                                        <span>
+                                                            Patient ID:{' '}
+                                                            <b>
+                                                                {
+                                                                    appointment.patientId
+                                                                }
+                                                            </b>
+                                                        </span>
+
+                                                        <span>
+                                                            Doctor ID:{' '}
+                                                            <b>
+                                                                {
+                                                                    appointment.doctorId
+                                                                }
+                                                            </b>
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             }
                                         />
@@ -425,8 +521,8 @@ export default function ReceptionistAppointmentsPage() {
                                         <Space wrap>
                                             <Button
                                                 disabled={
-                                                    !canWriteAppointment ||
-                                                    !canChangeAppointment(
+                                                    !canWriteAppointments ||
+                                                    !canModifyAppointment(
                                                         appointment,
                                                     )
                                                 }
@@ -446,8 +542,8 @@ export default function ReceptionistAppointmentsPage() {
                                             <Button
                                                 danger
                                                 disabled={
-                                                    !canWriteAppointment ||
-                                                    !canChangeAppointment(
+                                                    !canWriteAppointments ||
+                                                    !canModifyAppointment(
                                                         appointment,
                                                     )
                                                 }
@@ -462,23 +558,30 @@ export default function ReceptionistAppointmentsPage() {
                                                 Hủy lịch
                                             </Button>
 
-                                            <Button
-                                                disabled={
-                                                    !canWriteAppointment ||
-                                                    !canChangeAppointment(
-                                                        appointment,
-                                                    )
-                                                }
-                                                loading={
-                                                    actionLoading ===
-                                                    appointment.id
-                                                }
-                                                onClick={() =>
+                                            <Popconfirm
+                                                title="Đánh dấu no-show?"
+                                                description="Chỉ dùng khi bệnh nhân không đến khám theo lịch."
+                                                okText="No-show"
+                                                cancelText="Đóng"
+                                                onConfirm={() =>
                                                     handleNoShow(appointment)
                                                 }
                                             >
-                                                No-show
-                                            </Button>
+                                                <Button
+                                                    disabled={
+                                                        !canWriteAppointments ||
+                                                        !canModifyAppointment(
+                                                            appointment,
+                                                        )
+                                                    }
+                                                    loading={
+                                                        actionLoading ===
+                                                        appointment.id
+                                                    }
+                                                >
+                                                    No-show
+                                                </Button>
+                                            </Popconfirm>
                                         </Space>
                                     </List.Item>
                                 )}
@@ -497,13 +600,24 @@ export default function ReceptionistAppointmentsPage() {
                         setAvailableSlots([]);
                     }}
                     onOk={handleReschedule}
-                    okText="Đổi lịch"
+                    okText="Xác nhận đổi lịch"
                     cancelText="Đóng"
                     confirmLoading={
                         !!selectedAppointment &&
                         actionLoading === selectedAppointment.id
                     }
+                    okButtonProps={{
+                        disabled: !selectedSlotId,
+                    }}
                 >
+                    <Alert
+                        type="info"
+                        showIcon
+                        message="Chọn slot mới cho lịch hẹn"
+                        description="Slot cũ sẽ được mở lại, slot mới sẽ được đặt thành BOOKED sau khi đổi lịch."
+                        style={{ marginBottom: 16 }}
+                    />
+
                     <p>
                         Bệnh nhân:{' '}
                         <b>{selectedAppointment?.patientName || 'N/A'}</b>
@@ -514,6 +628,14 @@ export default function ReceptionistAppointmentsPage() {
                         <b>{selectedAppointment?.doctorName || 'N/A'}</b>
                     </p>
 
+                    <p>
+                        Lịch hiện tại:{' '}
+                        <b>
+                            {formatDateTime(selectedAppointment?.startTime)} →{' '}
+                            {formatTime(selectedAppointment?.endTime)}
+                        </b>
+                    </p>
+
                     <Select
                         value={selectedSlotId}
                         onChange={setSelectedSlotId}
@@ -521,18 +643,20 @@ export default function ReceptionistAppointmentsPage() {
                         style={{ width: '100%', marginTop: 12 }}
                         options={availableSlots.map((slot) => ({
                             value: slot.id,
-                            label: `${new Date(
-                                slot.startTime,
-                            ).toLocaleString('vi-VN')} → ${new Date(
+                            label: `${formatDateTime(slot.startTime)} → ${formatTime(
                                 slot.endTime,
-                            ).toLocaleTimeString('vi-VN')}`,
+                            )}`,
                         }))}
                     />
 
                     {availableSlots.length === 0 && (
-                        <p style={{ color: '#6a7c7a', marginTop: 12 }}>
-                            Bác sĩ này chưa có slot khả dụng để đổi lịch.
-                        </p>
+                        <Alert
+                            type="warning"
+                            showIcon
+                            message="Không có slot khả dụng"
+                            description="Bác sĩ này chưa có slot trống để đổi lịch. Hãy yêu cầu bác sĩ tạo thêm slot làm việc."
+                            style={{ marginTop: 12 }}
+                        />
                     )}
                 </Modal>
 
@@ -542,6 +666,7 @@ export default function ReceptionistAppointmentsPage() {
                     onCancel={() => {
                         setCancelOpen(false);
                         setSelectedAppointment(null);
+                        cancelForm.resetFields();
                     }}
                     footer={null}
                     destroyOnClose
@@ -549,8 +674,31 @@ export default function ReceptionistAppointmentsPage() {
                     <Form
                         form={cancelForm}
                         layout="vertical"
-                        onFinish={handleCancel}
+                        onFinish={handleCancelAppointment}
                     >
+                        <Alert
+                            type="warning"
+                            showIcon
+                            message="Lịch hẹn sẽ bị hủy"
+                            description="Slot làm việc liên quan sẽ được mở lại nếu lịch hẹn có gắn work slot."
+                            style={{ marginBottom: 16 }}
+                        />
+
+                        <p>
+                            Bệnh nhân:{' '}
+                            <b>{selectedAppointment?.patientName || 'N/A'}</b>
+                        </p>
+
+                        <p>
+                            Thời gian:{' '}
+                            <b>
+                                {formatDateTime(
+                                    selectedAppointment?.startTime,
+                                )}{' '}
+                                → {formatTime(selectedAppointment?.endTime)}
+                            </b>
+                        </p>
+
                         <Form.Item
                             label="Lý do hủy"
                             name="reason"
@@ -563,18 +711,18 @@ export default function ReceptionistAppointmentsPage() {
                         >
                             <Input.TextArea
                                 rows={4}
-                                placeholder="Ví dụ: bệnh nhân yêu cầu hủy, bác sĩ bận đột xuất..."
+                                placeholder="Ví dụ: Bệnh nhân yêu cầu hủy, bác sĩ bận đột xuất..."
                             />
                         </Form.Item>
 
                         <Button
                             danger
                             htmlType="submit"
+                            block
                             loading={
                                 !!selectedAppointment &&
                                 actionLoading === selectedAppointment.id
                             }
-                            block
                         >
                             Xác nhận hủy lịch
                         </Button>
