@@ -9,10 +9,11 @@ import type { PageResponse } from '@/types/pagination';
 
 export async function getAppointmentRequests(
     status?: AppointmentRequestStatus | 'ALL',
+    size = 100,
 ) {
     const params = new URLSearchParams();
 
-    params.set('size', '20');
+    params.set('size', String(size));
 
     if (status && status !== 'ALL') {
         params.set('status', status);
@@ -25,9 +26,9 @@ export async function getAppointmentRequests(
     return res.data;
 }
 
-export async function getMyAppointmentRequests() {
+export async function getMyAppointmentRequests(size = 50) {
     const res = await apiRequest<PageResponse<AppointmentRequest>>(
-        '/v1/appointment-requests/me?size=20',
+        `/v1/appointment-requests/me?size=${size}`,
     );
 
     return res.data;
