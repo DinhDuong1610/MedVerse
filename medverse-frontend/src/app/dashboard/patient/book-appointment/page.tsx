@@ -20,6 +20,12 @@ import { useAuthSession } from '@/lib/auth/use-auth-session';
 import { createMyAppointmentRequest } from '@/services/appointment-request.service';
 import type { AppointmentRequestCreatePayload } from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
+import { useEffect, useState } from 'react';
+import {
+    getDirectoryDoctors,
+    getDirectorySpecialties,
+} from '@/services/directory.service';
+import type { DirectoryDoctor, DirectorySpecialty } from '@/types/clinical';
 
 type BookingFormValues = {
     bookingMode: 'DOCTOR' | 'SPECIALTY';
@@ -35,14 +41,45 @@ export default function PatientBookAppointmentPage() {
     const router = useRouter();
     const { session, loading: authLoading } = useAuthSession();
     const [form] = Form.useForm<BookingFormValues>();
+    const [specialties, setSpecialties] = useState<DirectorySpecialty[]>([]);
+    const [doctors, setDoctors] = useState<DirectoryDoctor[]>([]);
+    const [directoryLoading, setDirectoryLoading] = useState(false);
+
+    useEffect(() => {
+        async function loadDirectory() {
+            try {
+                setDirectoryLoading(true);
+
+                const [specialtyData, doctorData] = await Promise.all([
+                    getDirectorySpecialties(),
+                    getDirectoryDoctors(),
+                ]);
+
+                setSpecialties(specialtyData);
+                setDoctors(doctorData);
+            } finally {
+                setDirectoryLoading(false);
+            }
+        }
+
+        if (session?.role === 'PATIENT') {
+            loadDirectory();
+        }
+    }, [session]);
+
+    const handleSpecialtyChange = async (specialtyId: string) => {
+        form.setFieldValue('specialtyId', specialtyId);
+        form.setFieldValue('doctorId', undefined);
+
+        const doctorData = await getDirectoryDoctors({ specialtyId });
+        setDoctors(doctorData);
+    };
 
     const handleSubmit = async (values: BookingFormValues) => {
         try {
             const payload: AppointmentRequestCreatePayload = {
-                doctorId:
-                    values.bookingMode === 'DOCTOR' ? values.doctorId : undefined,
-                specialtyId:
-                    values.bookingMode === 'SPECIALTY' ? values.specialtyId : undefined,
+                doctorId: values.doctorId,
+                specialtyId: values.specialtyId,
                 desiredDate: values.desiredDate.format('YYYY-MM-DD'),
                 desiredTime: values.desiredTime,
                 type: values.type,
@@ -125,32 +162,40 @@ export default function PatientBookAppointmentPage() {
                                 if (mode === 'DOCTOR') {
                                     return (
                                         <Form.Item
-                                            label="Doctor ID"
+                                            label="Bác sĩ"
                                             name="doctorId"
-                                            rules={[
-                                                {
-                                                    required: true,
-                                                    message: 'Nhập Doctor ID',
-                                                },
-                                            ]}
+                                            rules={[{ required: true, message: 'Chọn bác sĩ' }]}
                                         >
-                                            <Input placeholder="Dán doctorId từ dữ liệu demo hoặc API doctor list" />
+                                            <Select
+                                                showSearch
+                                                loading={directoryLoading}
+                                                placeholder="Chọn bác sĩ"
+                                                optionFilterProp="label"
+                                                options={doctors.map((doctor) => ({
+                                                    value: doctor.userId,
+                                                    label: `${doctor.fullName || doctor.email} · ${doctor.specialtyName || 'Chưa rõ chuyên khoa'
+                                                        }`,
+                                                }))}
+                                            />
                                         </Form.Item>
                                     );
                                 }
 
                                 return (
                                     <Form.Item
-                                        label="Specialty ID"
+                                        label="Chuyên khoa"
                                         name="specialtyId"
-                                        rules={[
-                                            {
-                                                required: true,
-                                                message: 'Nhập Specialty ID',
-                                            },
-                                        ]}
+                                        rules={[{ required: true, message: 'Chọn chuyên khoa' }]}
                                     >
-                                        <Input placeholder="Dán specialtyId từ dữ liệu demo hoặc API specialty list" />
+                                        <Select
+                                            loading={directoryLoading}
+                                            placeholder="Chọn chuyên khoa"
+                                            onChange={handleSpecialtyChange}
+                                            options={specialties.map((item) => ({
+                                                value: item.id,
+                                                label: `${item.name} (${item.code})`,
+                                            }))}
+                                        />
                                     </Form.Item>
                                 );
                             }}
