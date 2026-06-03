@@ -24,6 +24,7 @@ import type {
     Appointment,
     PatientMedicalProfile,
 } from '@/types/clinical';
+import styles from '../../../../dashboard.module.scss';
 
 type ClinicalAiAssistPanelProps = {
     appointment: Appointment | null;
@@ -144,6 +145,7 @@ export default function ClinicalAiAssistPanel({
 
     return (
         <Card
+            className={styles.detailCard}
             title="AI hỗ trợ khám và chẩn đoán"
             extra={
                 <Space wrap>

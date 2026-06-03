@@ -8,7 +8,6 @@ import {
     HeartOutlined,
     LogoutOutlined,
     MedicineBoxOutlined,
-    RobotOutlined,
     UserOutlined,
 } from '@ant-design/icons';
 import { Button, Tag } from 'antd';
@@ -209,7 +208,9 @@ export default function DashboardFrame({
                                 key={item.href}
                                 href={item.href}
                                 className={
-                                    active ? styles.navItemActive : styles.navItem
+                                    active
+                                        ? styles.navItemActive
+                                        : styles.navItem
                                 }
                             >
                                 {item.icon}
@@ -232,11 +233,7 @@ export default function DashboardFrame({
                     <div>
                         <Tag color="cyan">MedVerse workspace</Tag>
                         <h1>{title}</h1>
-                        <p>
-                            {subtitle ||
-                                session.fullName ||
-                                session.email}
-                        </p>
+                        <p>{subtitle || session.fullName || session.email}</p>
                     </div>
 
                     <NotificationBadge />

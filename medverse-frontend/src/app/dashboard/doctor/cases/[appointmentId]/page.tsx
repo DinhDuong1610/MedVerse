@@ -4,7 +4,6 @@ import {
     Alert,
     Button,
     Card,
-    Collapse,
     Divider,
     Form,
     Input,
@@ -12,11 +11,9 @@ import {
     List,
     Modal,
     Popconfirm,
-    Select,
     Skeleton,
     Space,
     Tag,
-    Typography,
     message,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
@@ -26,7 +23,6 @@ import StatusTag from '../../../_components/StatusTag';
 import { hasAnyPermission } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import { getAppointmentById } from '@/services/appointment.service';
-import ClinicalAiAssistPanel from './_components/ClinicalAiAssistPanel';
 import {
     addDiagnosis,
     completeMedicalRecord,
@@ -50,7 +46,6 @@ import {
     updatePrescription,
     updatePrescriptionItem,
 } from '@/services/prescription.service';
-import { analyzeClinicalText } from '@/services/ai.service';
 import type {
     Allergy,
     Appointment,
@@ -60,6 +55,7 @@ import type {
     PrescriptionItem,
 } from '@/types/clinical';
 import styles from '../../../dashboard.module.scss';
+import ClinicalAiAssistPanel from './_components/ClinicalAiAssistPanel';
 import DiagnosisAiSuggest from './_components/DiagnosisAiSuggest';
 import MedicationSmartSelect from './_components/MedicationSmartSelect';
 
@@ -134,6 +130,32 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
     const [cancelPrescriptionForm] =
         Form.useForm<CancelPrescriptionFormValues>();
 
+    const watchedChiefComplaint = Form.useWatch('chiefComplaint', recordForm);
+    const watchedSymptoms = Form.useWatch('symptoms', recordForm);
+    const watchedClinicalNote = Form.useWatch('clinicalNote', recordForm);
+    const watchedDiagnosisText = Form.useWatch('diagnosisText', recordForm);
+    const watchedTreatmentPlan = Form.useWatch('treatmentPlan', recordForm);
+
+    const clinicalTextForAi = useMemo(
+        () =>
+            [
+                watchedChiefComplaint,
+                watchedSymptoms,
+                watchedClinicalNote,
+                watchedDiagnosisText,
+                watchedTreatmentPlan,
+            ]
+                .filter(Boolean)
+                .join('\n'),
+        [
+            watchedChiefComplaint,
+            watchedSymptoms,
+            watchedClinicalNote,
+            watchedDiagnosisText,
+            watchedTreatmentPlan,
+        ],
+    );
+
     const appointmentId = params.appointmentId;
 
     const [loading, setLoading] = useState(true);
@@ -149,10 +171,6 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
     );
     const [prescription, setPrescription] = useState<Prescription | null>(null);
 
-    const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(
-        null,
-    );
-
     const [editingItem, setEditingItem] = useState<PrescriptionItem | null>(
         null,
     );
@@ -164,6 +182,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
         'PRESCRIPTION:WRITE',
     ]);
 
+    const recordLocked = medicalRecord?.status === 'COMPLETED';
     const prescriptionItems = prescription?.items || [];
     const safetyAlerts = prescription?.safetyAlerts || [];
 
@@ -234,6 +253,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                 try {
                     const prescriptionData =
                         await getPrescriptionByMedicalRecord(record.id);
+
                     setPrescription(prescriptionData);
 
                     prescriptionNoteForm.setFieldsValue({
@@ -322,54 +342,6 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                 err instanceof Error
                     ? err.message
                     : 'Không thể hoàn tất bệnh án.',
-            );
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
-    const handleAnalyzeText = async () => {
-        const values = recordForm.getFieldsValue();
-
-        const clinicalText = [
-            values.chiefComplaint,
-            values.symptoms,
-            values.clinicalNote,
-            values.diagnosisText,
-            values.treatmentPlan,
-        ]
-            .filter(Boolean)
-            .join('\n');
-
-        if (!clinicalText.trim()) {
-            message.warning('Nhập ghi chú lâm sàng trước khi gọi AI phân tích.');
-            return;
-        }
-
-        try {
-            setActionLoading('ai-analyze');
-
-            const result = await analyzeClinicalText({
-                diagnosis_text_input: clinicalText,
-                medical_history: {
-                    appointmentId,
-                    patientId: appointment?.patientId,
-                    bloodType: patientProfile?.bloodType,
-                    chronicDiseases: patientProfile?.chronicDiseases,
-                    medicalHistory: patientProfile?.medicalHistory,
-                    currentMedicationsNote:
-                        patientProfile?.currentMedicationsNote,
-                    allergies,
-                },
-            });
-
-            setAiResult(result.data || result);
-            message.success('AI đã phân tích ghi chú lâm sàng.');
-        } catch (err) {
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : 'Không thể gọi AI analyze text.',
             );
         } finally {
             setActionLoading(null);
@@ -522,14 +494,16 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
 
     const openEditItemModal = (item: PrescriptionItem) => {
         setEditingItem(item);
+
         editDrugForm.setFieldsValue({
-            medicationId: item.medicationId || '',
+            medicationId: item.medicationId || item.medicationName || '',
             dosage: item.dosage || '',
             frequency: item.frequency || '',
             duration: item.duration || '',
             quantity: item.quantity || 1,
             instruction: item.instruction || '',
         });
+
         setEditItemOpen(true);
     };
 
@@ -686,8 +660,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 <div>
                                     <span>Bệnh nhân</span>
                                     <strong>
-                                        {appointment.patientName ||
-                                            'Bệnh nhân'}
+                                        {appointment.patientName || 'Bệnh nhân'}
                                     </strong>
                                 </div>
 
@@ -701,9 +674,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 <div>
                                     <span>Bắt đầu</span>
                                     <strong>
-                                        {formatDateTime(
-                                            appointment.startTime,
-                                        )}
+                                        {formatDateTime(appointment.startTime)}
                                     </strong>
                                 </div>
 
@@ -728,8 +699,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                             <div>
                                 <span>Nhóm máu</span>
                                 <strong>
-                                    {patientProfile?.bloodType ||
-                                        'Chưa cập nhật'}
+                                    {patientProfile?.bloodType || 'Chưa cập nhật'}
                                 </strong>
                             </div>
 
@@ -789,24 +759,13 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                     <StatusTag value={medicalRecord.status} />
 
                                     <Button
-                                        onClick={handleAnalyzeText}
-                                        loading={
-                                            actionLoading === 'ai-analyze'
-                                        }
-                                    >
-                                        AI analyze
-                                    </Button>
-
-                                    <Button
                                         type="primary"
                                         disabled={
                                             !canWriteEhr ||
-                                            medicalRecord.status ===
-                                            'COMPLETED'
+                                            recordLocked
                                         }
                                         loading={
-                                            actionLoading ===
-                                            'complete-record'
+                                            actionLoading === 'complete-record'
                                         }
                                         onClick={handleCompleteMedicalRecord}
                                     >
@@ -820,7 +779,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                             form={recordForm}
                             layout="vertical"
                             onFinish={handleSaveMedicalRecord}
-                            disabled={!canWriteEhr}
+                            disabled={!canWriteEhr || recordLocked}
                         >
                             <Form.Item label="Lý do khám" name="chiefComplaint">
                                 <Input placeholder="Ví dụ: Sốt, đau họng 3 ngày" />
@@ -874,58 +833,20 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 type="primary"
                                 htmlType="submit"
                                 loading={actionLoading === 'save-record'}
-                                disabled={!canWriteEhr}
+                                disabled={!canWriteEhr || recordLocked}
                             >
                                 {medicalRecord
                                     ? 'Cập nhật bệnh án'
                                     : 'Tạo bệnh án'}
                             </Button>
                         </Form>
-
-                        {aiResult && (
-                            <>
-                                <Divider />
-
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    message="Kết quả AI analyze text"
-                                    description={
-                                        <Typography.Text>
-                                            AI chỉ hỗ trợ phân tích. Bác sĩ là
-                                            người xác nhận cuối cùng.
-                                        </Typography.Text>
-                                    }
-                                />
-
-                                <pre
-                                    style={{
-                                        marginTop: 12,
-                                        padding: 14,
-                                        borderRadius: 16,
-                                        background: '#f6fffd',
-                                        overflow: 'auto',
-                                        maxHeight: 260,
-                                    }}
-                                >
-                                    {JSON.stringify(aiResult, null, 2)}
-                                </pre>
-                            </>
-                        )}
                     </Card>
+
                     <ClinicalAiAssistPanel
                         appointment={appointment}
                         patientProfile={patientProfile}
                         allergies={allergies}
-                        clinicalText={[
-                            recordForm.getFieldValue('chiefComplaint'),
-                            recordForm.getFieldValue('symptoms'),
-                            recordForm.getFieldValue('clinicalNote'),
-                            recordForm.getFieldValue('diagnosisText'),
-                            recordForm.getFieldValue('treatmentPlan'),
-                        ]
-                            .filter(Boolean)
-                            .join('\n')}
+                        clinicalText={clinicalTextForAi}
                         onPickDiagnosis={(item) => {
                             diagnosisForm.setFieldsValue({
                                 diagnosisText: item.diagnosisText,
@@ -933,9 +854,13 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 icdDisplay: item.icdDisplay,
                             });
 
-                            recordForm.setFieldValue('diagnosisText', item.diagnosisText);
+                            recordForm.setFieldValue(
+                                'diagnosisText',
+                                item.diagnosisText,
+                            );
                         }}
                     />
+
                     <Card className={styles.detailCard} title="Chẩn đoán ICD">
                         <DiagnosisAiSuggest
                             onPick={(item) => {
@@ -953,7 +878,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                             form={diagnosisForm}
                             layout="vertical"
                             onFinish={handleAddDiagnosis}
-                            disabled={!canWriteEhr || !medicalRecord}
+                            disabled={!canWriteEhr || !medicalRecord || recordLocked}
                         >
                             <Form.Item
                                 label="Chẩn đoán"
@@ -988,7 +913,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 type="primary"
                                 ghost
                                 htmlType="submit"
-                                disabled={!canWriteEhr || !medicalRecord}
+                                disabled={!canWriteEhr || !medicalRecord || recordLocked}
                                 loading={actionLoading === 'add-diagnosis'}
                             >
                                 Thêm chẩn đoán
@@ -1017,7 +942,9 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                             <Button
                                                 danger
                                                 type="link"
-                                                disabled={!canWriteEhr}
+                                                disabled={
+                                                    !canWriteEhr || recordLocked
+                                                }
                                                 loading={
                                                     actionLoading === item.id
                                                 }
@@ -1140,7 +1067,10 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                         !isDraftPrescription(prescription)
                                     }
                                 >
-                                    <Form.Item label="Ghi chú đơn thuốc" name="note">
+                                    <Form.Item
+                                        label="Ghi chú đơn thuốc"
+                                        name="note"
+                                    >
                                         <Input.TextArea
                                             rows={3}
                                             placeholder="Ghi chú chung cho đơn thuốc..."
@@ -1345,8 +1275,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                                 description={
                                                     <div>
                                                         <p>
-                                                            {item.dosage ||
-                                                                ''}{' '}
+                                                            {item.dosage || ''}{' '}
                                                             ·{' '}
                                                             {item.frequency ||
                                                                 ''}{' '}
@@ -1354,8 +1283,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                                             {item.duration ||
                                                                 ''}{' '}
                                                             · SL:{' '}
-                                                            {item.quantity ||
-                                                                0}
+                                                            {item.quantity || 0}
                                                         </p>
                                                         <p>
                                                             {item.instruction ||
@@ -1388,7 +1316,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                                     }
                                                 >
                                                     {alert.severity} ·{' '}
-                                                    {alert.type}: {' '}
+                                                    {alert.type}:{' '}
                                                     {alert.title ||
                                                         alert.message}
                                                 </Tag>
@@ -1417,10 +1345,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                         layout="vertical"
                         onFinish={handleUpdateMedication}
                     >
-                        <Form.Item
-                            label="Thuốc"
-                            name="medicationId"
-                        >
+                        <Form.Item label="Thuốc" name="medicationId">
                             <Input disabled />
                         </Form.Item>
 
@@ -1473,10 +1398,7 @@ export default function DoctorCaseDetailPage({ params }: PageProps) {
                                 },
                             ]}
                         >
-                            <InputNumber
-                                style={{ width: '100%' }}
-                                min={1}
-                            />
+                            <InputNumber style={{ width: '100%' }} min={1} />
                         </Form.Item>
 
                         <Form.Item label="Hướng dẫn" name="instruction">
