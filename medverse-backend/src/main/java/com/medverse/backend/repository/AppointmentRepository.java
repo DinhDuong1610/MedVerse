@@ -16,40 +16,51 @@ import java.util.UUID;
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
 
-        Page<Appointment> findByPatientIdOrderByStartTimeDesc(UUID patientId, Pageable pageable);
+    Page<Appointment> findByPatientIdOrderByStartTimeDesc(UUID patientId, Pageable pageable);
 
-        List<Appointment> findByDoctorIdAndStartTimeBetweenOrderByStartTimeAsc(
-                        UUID doctorId, OffsetDateTime from, OffsetDateTime to);
+    List<Appointment> findByDoctorIdAndStartTimeBetweenOrderByStartTimeAsc(
+            UUID doctorId, OffsetDateTime from, OffsetDateTime to);
 
-        @Query("""
-                            SELECT COUNT(a) > 0 FROM Appointment a
-                            WHERE a.doctor.id = :doctorId
-                            AND a.startTime < :endTime
-                            AND a.endTime > :startTime
-                            AND a.status NOT IN ('CANCELLED', 'NO_SHOW')
-                        """)
-        boolean existsOverlappingAppointment(
-                        @Param("doctorId") UUID doctorId,
-                        @Param("startTime") OffsetDateTime startTime,
-                        @Param("endTime") OffsetDateTime endTime);
+    @Query("""
+                SELECT COUNT(a) > 0 FROM Appointment a
+                WHERE a.doctor.id = :doctorId
+                AND a.startTime < :endTime
+                AND a.endTime > :startTime
+                AND a.status NOT IN ('CANCELLED', 'NO_SHOW')
+            """)
+    boolean existsOverlappingAppointment(
+            @Param("doctorId") UUID doctorId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime);
 
-        List<Appointment> findByStatusAndStartTimeBetween(
-                        AppointmentStatus status, OffsetDateTime from, OffsetDateTime to);
+    List<Appointment> findByStatusAndStartTimeBetween(
+            AppointmentStatus status, OffsetDateTime from, OffsetDateTime to);
 
-        @Query("""
-                            SELECT a FROM Appointment a
-                            WHERE (:doctorId IS NULL OR a.doctor.id = :doctorId)
-                            AND (:patientId IS NULL OR a.patient.id = :patientId)
-                            AND (:status IS NULL OR a.status = :status)
-                            AND (cast(:fromTime as timestamp) IS NULL OR a.startTime >= :fromTime)
-                            AND (cast(:toTime as timestamp) IS NULL OR a.endTime <= :toTime)
-                            ORDER BY a.startTime ASC
-                        """)
-        Page<Appointment> searchAppointments(
-                        @Param("doctorId") UUID doctorId,
-                        @Param("patientId") UUID patientId,
-                        @Param("status") AppointmentStatus status,
-                        @Param("fromTime") OffsetDateTime fromTime,
-                        @Param("toTime") OffsetDateTime toTime,
-                        Pageable pageable);
+    long countByStatus(AppointmentStatus status);
+
+    long countByStartTimeBetween(OffsetDateTime from, OffsetDateTime to);
+
+    long countByStartTimeAfter(OffsetDateTime from);
+
+    long countByStatusAndStartTimeBetween(
+            AppointmentStatus status,
+            OffsetDateTime from,
+            OffsetDateTime to);
+
+    @Query("""
+                SELECT a FROM Appointment a
+                WHERE (:doctorId IS NULL OR a.doctor.id = :doctorId)
+                AND (:patientId IS NULL OR a.patient.id = :patientId)
+                AND (:status IS NULL OR a.status = :status)
+                AND (cast(:fromTime as timestamp) IS NULL OR a.startTime >= :fromTime)
+                AND (cast(:toTime as timestamp) IS NULL OR a.endTime <= :toTime)
+                ORDER BY a.startTime ASC
+            """)
+    Page<Appointment> searchAppointments(
+            @Param("doctorId") UUID doctorId,
+            @Param("patientId") UUID patientId,
+            @Param("status") AppointmentStatus status,
+            @Param("fromTime") OffsetDateTime fromTime,
+            @Param("toTime") OffsetDateTime toTime,
+            Pageable pageable);
 }

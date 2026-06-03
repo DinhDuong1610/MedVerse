@@ -120,6 +120,14 @@ const NAV_ITEMS: NavItem[] = [
         icon: <FileProtectOutlined />,
         anyPermissions: ['APPOINTMENT:READ_ANY'],
     },
+
+    {
+        label: 'Vận hành',
+        href: '/dashboard/admin/operations',
+        icon: <AppstoreOutlined />,
+        anyPermissions: ['ADMIN_PANEL:ACCESS'],
+        anyRoles: ['ADMIN'],
+    },
     {
         label: 'Chuyên khoa',
         href: '/dashboard/admin/specialties',
