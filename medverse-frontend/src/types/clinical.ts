@@ -111,14 +111,38 @@ export type AiHealth = {
 
 export type Medication = {
     id: string;
-    code: string;
     name: string;
     activeIngredient?: string;
+    code: string;
     atcCode?: string;
-    unit?: string;
+    unit: string;
     packingSpecification?: string;
     usageInstruction?: string;
     contraindication?: string;
+    totalStock?: number;
+};
+
+export type MedicationCreatePayload = {
+    name: string;
+    code: string;
+    activeIngredient?: string;
+    atcCode?: string;
+    unit: string;
+    packingSpecification?: string;
+    usageInstruction?: string;
+    contraindication?: string;
+};
+
+export type StockImportPayload = {
+    medicationId: string;
+    batchNumber: string;
+    supplierName?: string;
+    manufactureDate?: string;
+    expiryDate: string;
+    quantity: number;
+    importPrice: number;
+    salePrice: number;
+    importReferenceCode?: string;
 };
 
 export type AiAtcSuggestion = {
