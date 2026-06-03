@@ -8,6 +8,7 @@ import {
     MedicineBoxOutlined,
     RobotOutlined,
     UserOutlined,
+    BellOutlined,
 } from '@ant-design/icons';
 import { Button, Tag } from 'antd';
 import Link from 'next/link';
@@ -18,6 +19,7 @@ import { clearAuthSession } from '@/lib/auth/auth-storage';
 import { getRoleLabel } from '@/lib/auth/roles';
 import type { AuthSession, DemoRole } from '@/types/auth';
 import styles from '../dashboard.module.scss';
+import NotificationBadge from './NotificationBadge';
 
 const navByRole: Record<
     DemoRole,
@@ -25,6 +27,11 @@ const navByRole: Record<
 > = {
     PATIENT: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
+        {
+            label: 'Thông báo',
+            href: '/dashboard/notifications',
+            icon: <BellOutlined />,
+        },
         { label: 'Đặt lịch', href: '/dashboard/patient/book-appointment', icon: <CalendarOutlined /> },
         { label: 'Yêu cầu của tôi', href: '/dashboard/patient/appointment-requests', icon: <FileProtectOutlined /> },
         { label: 'Lịch hẹn', href: '/dashboard/patient/appointments', icon: <CalendarOutlined /> },
@@ -34,6 +41,11 @@ const navByRole: Record<
     ],
     DOCTOR: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
+        {
+            label: 'Thông báo',
+            href: '/dashboard/notifications',
+            icon: <BellOutlined />,
+        },
         { label: 'Lịch khám', href: '/dashboard/doctor/appointments', icon: <CalendarOutlined /> },
         { label: 'Slot làm việc', href: '/dashboard/doctor/work-slots', icon: <CalendarOutlined /> },
         { label: 'Ca khám', href: '/dashboard/doctor/cases', icon: <FileProtectOutlined /> },
@@ -42,6 +54,11 @@ const navByRole: Record<
     ],
     RECEPTIONIST: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
+        {
+            label: 'Thông báo',
+            href: '/dashboard/notifications',
+            icon: <BellOutlined />,
+        },
         {
             label: 'Yêu cầu đặt lịch',
             href: '/dashboard/receptionist/requests',
@@ -55,6 +72,11 @@ const navByRole: Record<
     ],
     ADMIN: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
+        {
+            label: 'Thông báo',
+            href: '/dashboard/notifications',
+            icon: <BellOutlined />,
+        },
         {
             label: 'Kho thuốc',
             href: '/dashboard/admin/inventory',
@@ -128,7 +150,7 @@ export default function DashboardFrame({
                         <h1>{title}</h1>
                         <p>{subtitle || session.email}</p>
                     </div>
-
+                    <NotificationBadge />
                     <Button icon={<LogoutOutlined />} onClick={logout}>
                         Đăng xuất
                     </Button>
