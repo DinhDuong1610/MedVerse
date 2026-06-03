@@ -12,9 +12,9 @@ import {
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useEffect, useState } from 'react';
-import DashboardFrame from '../../_components/DashboardFrame';
 import ClinicalPageState from '../../_components/ClinicalPageState';
-import RoleGuardState from '../../_components/RoleGuardState';
+import PatientPortalFrame from '../../_components/PatientPortalFrame';
+import { hasRole } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import { createMyAppointmentRequest } from '@/services/appointment-request.service';
 import {
@@ -26,7 +26,7 @@ import type {
     DirectoryDoctor,
     DirectorySpecialty,
 } from '@/types/clinical';
-import styles from '../../dashboard.module.scss';
+import styles from '../../_components/patient-portal.module.scss';
 
 type BookAppointmentFormValues = {
     specialtyId: string;
@@ -77,7 +77,8 @@ export default function PatientBookAppointmentPage() {
     useEffect(() => {
         if (!session) return;
 
-        if (session.role !== 'PATIENT') {
+        if (!hasRole(session, 'PATIENT')) {
+            setError('Trang này chỉ dành cho bệnh nhân.');
             setLoading(false);
             return;
         }
@@ -121,7 +122,6 @@ export default function PatientBookAppointmentPage() {
             await createMyAppointmentRequest(payload);
 
             message.success('Đã gửi yêu cầu đặt lịch.');
-
             form.resetFields();
         } catch (err) {
             message.error(
@@ -139,160 +139,181 @@ export default function PatientBookAppointmentPage() {
     }
 
     return (
-        <DashboardFrame
-            session={session}
-            title="Đặt lịch khám"
-            subtitle="Chọn chuyên khoa, bác sĩ và thời gian mong muốn"
-        >
-            <RoleGuardState session={session} allow={['PATIENT']}>
-                <ClinicalPageState
-                    loading={loading}
-                    error={error}
-                    empty={specialties.length === 0 && doctors.length === 0}
-                    emptyTitle="Chưa có dữ liệu chuyên khoa/bác sĩ"
-                    emptyDescription="Hãy kiểm tra seed demo data hoặc Directory API ở backend."
-                >
-                    <Card className={styles.detailCard}>
-                        <div className={styles.panelHeader}>
-                            <div>
-                                <span>Appointment booking</span>
-                                <h2>Gửi yêu cầu đặt lịch</h2>
-                            </div>
+        <PatientPortalFrame session={session}>
+            <ClinicalPageState
+                loading={loading}
+                error={error}
+                empty={specialties.length === 0 && doctors.length === 0}
+                emptyTitle="Chưa có dữ liệu chuyên khoa/bác sĩ"
+                emptyDescription="Hãy kiểm tra seed demo data hoặc Directory API ở backend."
+            >
+                <section className={styles.hero}>
+                    <div>
+                        <div className={styles.heroKicker}>Booking</div>
+                        <h1 className={styles.heroTitle}>
+                            Đặt lịch khám với bác sĩ phù hợp
+                        </h1>
+                        <p className={styles.heroDescription}>
+                            Chọn chuyên khoa, bác sĩ và thời gian mong muốn. Lễ
+                            tân sẽ xác nhận yêu cầu và tạo lịch hẹn chính thức.
+                        </p>
+                    </div>
+
+                    <article className={styles.heroCard}>
+                        <span>Quy trình</span>
+                        <strong>3 bước</strong>
+                        <p>
+                            Chọn chuyên khoa → chọn bác sĩ → gửi yêu cầu đặt
+                            lịch.
+                        </p>
+                    </article>
+                </section>
+
+                <Card className={styles.portalPanel} style={{ marginTop: 24 }}>
+                    <div className={styles.panelHeader}>
+                        <div>
+                            <span>Appointment request</span>
+                            <h2>Thông tin yêu cầu khám</h2>
+                            <p>
+                                Mô tả triệu chứng càng rõ, lễ tân và bác sĩ càng
+                                dễ hỗ trợ bạn.
+                            </p>
                         </div>
+                    </div>
 
-                        <Form
-                            form={form}
-                            layout="vertical"
-                            onFinish={handleSubmit}
-                            initialValues={{
-                                type: 'OFFLINE',
-                                desiredDate: dayjs().add(1, 'day'),
-                            }}
+                    <Form
+                        form={form}
+                        layout="vertical"
+                        onFinish={handleSubmit}
+                        initialValues={{
+                            type: 'OFFLINE',
+                            desiredDate: dayjs().add(1, 'day'),
+                        }}
+                    >
+                        <Form.Item
+                            label="Chuyên khoa"
+                            name="specialtyId"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Chọn chuyên khoa',
+                                },
+                            ]}
                         >
-                            <Form.Item
-                                label="Chuyên khoa"
-                                name="specialtyId"
-                                rules={[
+                            <Select
+                                loading={directoryLoading}
+                                placeholder="Chọn chuyên khoa"
+                                onChange={handleSpecialtyChange}
+                                options={specialties.map((item) => ({
+                                    value: item.id,
+                                    label: `${item.name} (${item.code})`,
+                                }))}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Bác sĩ"
+                            name="doctorId"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Chọn bác sĩ',
+                                },
+                            ]}
+                        >
+                            <Select
+                                showSearch
+                                loading={directoryLoading}
+                                placeholder="Chọn bác sĩ"
+                                optionFilterProp="label"
+                                options={doctors.map((doctor) => ({
+                                    value: doctor.userId,
+                                    label: `${doctor.fullName || doctor.email} · ${doctor.specialtyName ||
+                                        'Chưa rõ chuyên khoa'
+                                        }`,
+                                }))}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Ngày mong muốn"
+                            name="desiredDate"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Chọn ngày khám',
+                                },
+                            ]}
+                        >
+                            <DatePicker
+                                style={{ width: '100%' }}
+                                disabledDate={(current) =>
+                                    current
+                                        ? current <= dayjs().endOf('day')
+                                        : false
+                                }
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Giờ mong muốn"
+                            name="desiredTime"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Chọn giờ khám',
+                                },
+                            ]}
+                        >
+                            <TimePicker
+                                format="HH:mm"
+                                style={{ width: '100%' }}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            label="Hình thức khám"
+                            name="type"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Chọn hình thức khám',
+                                },
+                            ]}
+                        >
+                            <Select
+                                options={[
                                     {
-                                        required: true,
-                                        message: 'Chọn chuyên khoa',
+                                        value: 'OFFLINE',
+                                        label: 'Khám trực tiếp',
+                                    },
+                                    {
+                                        value: 'ONLINE',
+                                        label: 'Khám online',
                                     },
                                 ]}
-                            >
-                                <Select
-                                    loading={directoryLoading}
-                                    placeholder="Chọn chuyên khoa"
-                                    onChange={handleSpecialtyChange}
-                                    options={specialties.map((item) => ({
-                                        value: item.id,
-                                        label: `${item.name} (${item.code})`,
-                                    }))}
-                                />
-                            </Form.Item>
+                            />
+                        </Form.Item>
 
-                            <Form.Item
-                                label="Bác sĩ"
-                                name="doctorId"
-                                rules={[
-                                    {
-                                        required: true,
-                                        message: 'Chọn bác sĩ',
-                                    },
-                                ]}
-                            >
-                                <Select
-                                    showSearch
-                                    loading={directoryLoading}
-                                    placeholder="Chọn bác sĩ"
-                                    optionFilterProp="label"
-                                    options={doctors.map((doctor) => ({
-                                        value: doctor.userId,
-                                        label: `${doctor.fullName || doctor.email} · ${doctor.specialtyName ||
-                                            'Chưa rõ chuyên khoa'
-                                            }`,
-                                    }))}
-                                />
-                            </Form.Item>
+                        <Form.Item label="Triệu chứng/Ghi chú" name="symptoms">
+                            <Input.TextArea
+                                rows={5}
+                                placeholder="Mô tả ngắn gọn triệu chứng, nhu cầu khám hoặc ghi chú cho lễ tân/bác sĩ."
+                            />
+                        </Form.Item>
 
-                            <Form.Item
-                                label="Ngày mong muốn"
-                                name="desiredDate"
-                                rules={[
-                                    {
-                                        required: true,
-                                        message: 'Chọn ngày khám',
-                                    },
-                                ]}
-                            >
-                                <DatePicker
-                                    style={{ width: '100%' }}
-                                    disabledDate={(current) =>
-                                        current
-                                            ? current <= dayjs().endOf('day')
-                                            : false
-                                    }
-                                />
-                            </Form.Item>
-
-                            <Form.Item
-                                label="Giờ mong muốn"
-                                name="desiredTime"
-                                rules={[
-                                    {
-                                        required: true,
-                                        message: 'Chọn giờ khám',
-                                    },
-                                ]}
-                            >
-                                <TimePicker
-                                    format="HH:mm"
-                                    style={{ width: '100%' }}
-                                />
-                            </Form.Item>
-
-                            <Form.Item
-                                label="Hình thức khám"
-                                name="type"
-                                rules={[
-                                    {
-                                        required: true,
-                                        message: 'Chọn hình thức khám',
-                                    },
-                                ]}
-                            >
-                                <Select
-                                    options={[
-                                        {
-                                            value: 'OFFLINE',
-                                            label: 'Khám trực tiếp',
-                                        },
-                                        {
-                                            value: 'ONLINE',
-                                            label: 'Khám online',
-                                        },
-                                    ]}
-                                />
-                            </Form.Item>
-
-                            <Form.Item label="Triệu chứng/Ghi chú" name="symptoms">
-                                <Input.TextArea
-                                    rows={5}
-                                    placeholder="Mô tả ngắn gọn triệu chứng, nhu cầu khám hoặc ghi chú cho lễ tân/bác sĩ."
-                                />
-                            </Form.Item>
-
-                            <Button
-                                type="primary"
-                                htmlType="submit"
-                                loading={submitting}
-                                block
-                            >
-                                Gửi yêu cầu đặt lịch
-                            </Button>
-                        </Form>
-                    </Card>
-                </ClinicalPageState>
-            </RoleGuardState>
-        </DashboardFrame>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={submitting}
+                            size="large"
+                            block
+                        >
+                            Gửi yêu cầu đặt lịch
+                        </Button>
+                    </Form>
+                </Card>
+            </ClinicalPageState>
+        </PatientPortalFrame>
     );
 }
