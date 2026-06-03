@@ -25,35 +25,17 @@ const navByRole: Record<
 > = {
     PATIENT: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
-        {
-            label: 'Đặt lịch',
-            href: '/dashboard/patient/book-appointment',
-            icon: <CalendarOutlined />,
-        },
-        {
-            label: 'Yêu cầu của tôi',
-            href: '/dashboard/patient/appointment-requests',
-            icon: <FileProtectOutlined />,
-        },
-        {
-            label: 'Hồ sơ y tế',
-            href: '/dashboard/patient/profile',
-            icon: <HeartOutlined />,
-        },
-        {
-            label: 'Bệnh án',
-            href: '/dashboard/patient/medical-records',
-            icon: <FileProtectOutlined />,
-        },
-        {
-            label: 'Đơn thuốc',
-            href: '/dashboard/patient/prescriptions',
-            icon: <MedicineBoxOutlined />,
-        },
+        { label: 'Đặt lịch', href: '/dashboard/patient/book-appointment', icon: <CalendarOutlined /> },
+        { label: 'Yêu cầu của tôi', href: '/dashboard/patient/appointment-requests', icon: <FileProtectOutlined /> },
+        { label: 'Lịch hẹn', href: '/dashboard/patient/appointments', icon: <CalendarOutlined /> },
+        { label: 'Hồ sơ y tế', href: '/dashboard/patient/profile', icon: <HeartOutlined /> },
+        { label: 'Bệnh án', href: '/dashboard/patient/medical-records', icon: <FileProtectOutlined /> },
+        { label: 'Đơn thuốc', href: '/dashboard/patient/prescriptions', icon: <MedicineBoxOutlined /> },
     ],
     DOCTOR: [
         { label: 'Tổng quan', href: '/dashboard', icon: <UserOutlined /> },
         { label: 'Lịch khám', href: '/dashboard/doctor/appointments', icon: <CalendarOutlined /> },
+        { label: 'Slot làm việc', href: '/dashboard/doctor/work-slots', icon: <CalendarOutlined /> },
         { label: 'Ca khám', href: '/dashboard/doctor/cases', icon: <FileProtectOutlined /> },
         { label: 'Đơn thuốc', href: '/dashboard/doctor/prescriptions', icon: <MedicineBoxOutlined /> },
         { label: 'AI Clinical', href: '/dashboard/doctor/ai', icon: <RobotOutlined /> },
