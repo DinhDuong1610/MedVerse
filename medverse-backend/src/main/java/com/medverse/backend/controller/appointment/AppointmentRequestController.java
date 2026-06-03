@@ -93,4 +93,16 @@ public class AppointmentRequestController {
         AppointmentRequestDto request = requestService.rejectRequest(id, reason);
         return ResponseEntity.ok(new AppResponse<>("SUCCESS", "Request rejected.", request, null));
     }
+
+    @PatchMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('APPOINTMENT:WRITE_OWN')")
+    @Operation(summary = "Cancel my appointment request", description = "Patient cancels their own pending appointment request.")
+    public ResponseEntity<AppResponse<Void>> cancelMyRequest(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID id) {
+
+        requestService.cancelRequest(id, currentUser.getId());
+        return ResponseEntity.ok(
+                new AppResponse<>("SUCCESS", "Appointment request cancelled.", null, null));
+    }
 }

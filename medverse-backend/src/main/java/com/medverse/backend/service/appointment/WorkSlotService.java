@@ -56,9 +56,12 @@ public class WorkSlotService {
 
                 WorkSlot savedSlot = workSlotRepository.save(workSlot);
 
-                // auditService.record("CREATE_SLOT", "WORK_SLOT", savedSlot.getId().toString(),
-                // "Created slot from " + savedSlot.getStartTime() + " to " +
-                // savedSlot.getEndTime());
+                auditService.record(
+                                "CREATE_WORK_SLOT",
+                                "WORK_SLOT",
+                                savedSlot.getId().toString(),
+                                "Doctor " + doctorId + " created slot from "
+                                                + savedSlot.getStartTime() + " to " + savedSlot.getEndTime());
 
                 return appointmentMapper.toDto(savedSlot);
         }
@@ -94,7 +97,10 @@ public class WorkSlotService {
 
                 workSlotRepository.delete(slot);
 
-                // auditService.record("DELETE_WORK_SLOT", "WORK_SLOT", slotId.toString(),
-                // "Deleted by doctor");
+                auditService.record(
+                                "DELETE_WORK_SLOT",
+                                "WORK_SLOT",
+                                slotId.toString(),
+                                "Doctor " + doctorId + " deleted available work slot");
         }
 }
