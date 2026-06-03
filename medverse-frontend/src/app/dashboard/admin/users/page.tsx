@@ -9,6 +9,7 @@ import {
     Input,
     InputNumber,
     List,
+    Modal,
     Select,
     Space,
     Statistic,
@@ -26,6 +27,7 @@ import {
     createAdminStaff,
     getAdminUserById,
     getAdminUsers,
+    updateAdminUserStatus,
 } from '@/services/admin-user.service';
 import { getDirectorySpecialties } from '@/services/directory.service';
 import type {
@@ -33,6 +35,7 @@ import type {
     AdminStaffRoleCode,
     AdminUser,
     AdminUserRoleCode,
+    AdminUserStatus,
 } from '@/types/admin-user';
 import type { DirectorySpecialty } from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
@@ -81,6 +84,26 @@ function formatDateTime(value?: string) {
 
 function getPrimaryRole(user: AdminUser) {
     return user.roles?.[0] || 'UNKNOWN';
+}
+
+function getStatusActionLabel(status: AdminUserStatus) {
+    if (status === 'ACTIVE') {
+        return 'Khóa tài khoản';
+    }
+
+    if (status === 'LOCKED' || status === 'DISABLED') {
+        return 'Kích hoạt lại';
+    }
+
+    return 'Kích hoạt';
+}
+
+function getNextStatus(status: AdminUserStatus): AdminUserStatus {
+    if (status === 'ACTIVE') {
+        return 'LOCKED';
+    }
+
+    return 'ACTIVE';
 }
 
 function normalizePayload(values: CreateStaffFormValues): AdminCreateStaffPayload {
@@ -158,7 +181,7 @@ export default function AdminUsersPage() {
     useEffect(() => {
         if (!session) return;
 
-        if (session.role !== 'ADMIN') {
+        if (session.role !== 'ADMIN' && session.primaryRole !== 'ADMIN') {
             setLoading(false);
             return;
         }
@@ -170,24 +193,34 @@ export default function AdminUsersPage() {
 
     const metrics = useMemo(() => {
         const active = users.filter((item) => item.status === 'ACTIVE').length;
+
+        const locked = users.filter((item) => item.status === 'LOCKED').length;
+
+        const disabled = users.filter(
+            (item) => item.status === 'DISABLED',
+        ).length;
+
         const doctors = users.filter((item) =>
             item.roles?.includes('DOCTOR'),
         ).length;
+
         const receptionists = users.filter((item) =>
             item.roles?.includes('RECEPTIONIST'),
-        ).length;
-        const patients = users.filter((item) =>
-            item.roles?.includes('PATIENT'),
         ).length;
 
         return {
             total: users.length,
             active,
+            locked,
+            disabled,
             doctors,
             receptionists,
-            patients,
         };
     }, [users]);
+
+    const isCurrentSessionUser = (user: AdminUser) => {
+        return session?.userId === user.id;
+    };
 
     const handleRoleFilterChange = (value: AdminUserRoleCode) => {
         setRoleCode(value);
@@ -235,6 +268,94 @@ export default function AdminUsersPage() {
         }
     };
 
+    const handleUpdateStatus = async (user: AdminUser) => {
+        if (isCurrentSessionUser(user)) {
+            message.warning('Bạn không thể tự khóa hoặc đổi trạng thái tài khoản của chính mình.');
+            return;
+        }
+
+        const nextStatus = getNextStatus(user.status);
+        const actionLabel = getStatusActionLabel(user.status);
+
+        Modal.confirm({
+            title: `${actionLabel}?`,
+            content:
+                nextStatus === 'ACTIVE'
+                    ? `Tài khoản ${user.email} sẽ được kích hoạt và có thể đăng nhập lại.`
+                    : `Tài khoản ${user.email} sẽ bị khóa và không thể đăng nhập.`,
+            okText: actionLabel,
+            cancelText: 'Đóng',
+            okButtonProps: {
+                danger: nextStatus !== 'ACTIVE',
+            },
+            onOk: async () => {
+                try {
+                    const updated = await updateAdminUserStatus(user.id, {
+                        status: nextStatus,
+                        reason:
+                            nextStatus === 'ACTIVE'
+                                ? 'Admin reactivated account from user management page.'
+                                : 'Admin locked account from user management page.',
+                    });
+
+                    message.success(`Đã cập nhật trạng thái ${updated.email}.`);
+
+                    if (selectedUser?.id === updated.id) {
+                        setSelectedUser(updated);
+                    }
+
+                    await loadUsers();
+                } catch (err) {
+                    message.error(
+                        err instanceof Error
+                            ? err.message
+                            : 'Không thể cập nhật trạng thái tài khoản.',
+                    );
+                }
+            },
+        });
+    };
+
+    const handleDisableUser = async (user: AdminUser) => {
+        if (isCurrentSessionUser(user)) {
+            message.warning('Bạn không thể tự vô hiệu hóa tài khoản của chính mình.');
+            return;
+        }
+
+        Modal.confirm({
+            title: 'Vô hiệu hóa tài khoản?',
+            content: `Tài khoản ${user.email} sẽ chuyển sang DISABLED và không thể đăng nhập.`,
+            okText: 'Vô hiệu hóa',
+            cancelText: 'Đóng',
+            okButtonProps: {
+                danger: true,
+            },
+            onOk: async () => {
+                try {
+                    const updated = await updateAdminUserStatus(user.id, {
+                        status: 'DISABLED',
+                        reason:
+                            'Admin disabled account from user management page.',
+                    });
+
+                    message.success(`Đã vô hiệu hóa ${updated.email}.`);
+
+                    if (selectedUser?.id === updated.id) {
+                        setSelectedUser(updated);
+                    }
+
+                    await loadUsers();
+                } catch (err) {
+                    message.error(
+                        err instanceof Error
+                            ? err.message
+                            : 'Không thể vô hiệu hóa tài khoản.',
+                    );
+                }
+            },
+        });
+    };
+
     if (authLoading || !session) {
         return <ClinicalPageState loading>Loading</ClinicalPageState>;
     }
@@ -243,7 +364,7 @@ export default function AdminUsersPage() {
         <DashboardFrame
             session={session}
             title="Quản lý người dùng"
-            subtitle="Tạo tài khoản bác sĩ/lễ tân và theo dõi vai trò trong hệ thống"
+            subtitle="Tạo tài khoản bác sĩ/lễ tân, theo dõi vai trò và quản lý trạng thái tài khoản"
         >
             <RoleGuardState session={session} allow={['ADMIN']}>
                 <section className={styles.metricGrid}>
@@ -256,11 +377,11 @@ export default function AdminUsersPage() {
                     </Card>
 
                     <Card className={styles.metricCard}>
-                        <Statistic title="Bác sĩ" value={metrics.doctors} />
+                        <Statistic title="Đang khóa" value={metrics.locked} />
                     </Card>
 
                     <Card className={styles.metricCard}>
-                        <Statistic title="Lễ tân" value={metrics.receptionists} />
+                        <Statistic title="Vô hiệu hóa" value={metrics.disabled} />
                     </Card>
                 </section>
 
@@ -270,8 +391,9 @@ export default function AdminUsersPage() {
                             <span>Admin user management</span>
                             <h2>Danh sách tài khoản</h2>
                             <p>
-                                Admin quản lý tài khoản, role và thông tin nhân
-                                sự. MVP chỉ cho tạo mới Doctor hoặc Receptionist.
+                                Admin quản lý tài khoản, role, permissions và
+                                trạng thái đăng nhập. MVP cho phép tạo mới
+                                Doctor hoặc Receptionist.
                             </p>
                         </div>
 
@@ -345,6 +467,14 @@ export default function AdminUsersPage() {
                                                                 </Tag>
                                                             ),
                                                         )}
+
+                                                        {isCurrentSessionUser(
+                                                            user,
+                                                        ) && (
+                                                                <Tag color="cyan">
+                                                                    Chính bạn
+                                                                </Tag>
+                                                            )}
                                                     </Space>
                                                 </div>
                                             }
@@ -396,9 +526,42 @@ export default function AdminUsersPage() {
                                             }
                                         />
 
-                                        <Button onClick={() => openUserDetail(user)}>
-                                            Chi tiết
-                                        </Button>
+                                        <Space wrap>
+                                            <Button
+                                                onClick={() =>
+                                                    openUserDetail(user)
+                                                }
+                                            >
+                                                Chi tiết
+                                            </Button>
+
+                                            <Button
+                                                disabled={isCurrentSessionUser(
+                                                    user,
+                                                )}
+                                                onClick={() =>
+                                                    handleUpdateStatus(user)
+                                                }
+                                            >
+                                                {getStatusActionLabel(
+                                                    user.status,
+                                                )}
+                                            </Button>
+
+                                            {user.status !== 'DISABLED' && (
+                                                <Button
+                                                    danger
+                                                    disabled={isCurrentSessionUser(
+                                                        user,
+                                                    )}
+                                                    onClick={() =>
+                                                        handleDisableUser(user)
+                                                    }
+                                                >
+                                                    Vô hiệu hóa
+                                                </Button>
+                                            )}
+                                        </Space>
                                     </List.Item>
                                 )}
                             />
@@ -572,102 +735,152 @@ export default function AdminUsersPage() {
                         setDetailOpen(false);
                         setSelectedUser(null);
                     }}
-                    loading={detailLoading}
+                    destroyOnClose
                 >
-                    {selectedUser && (
-                        <div>
-                            <h2>{selectedUser.fullName || selectedUser.email}</h2>
+                    <ClinicalPageState loading={detailLoading}>
+                        {selectedUser && (
+                            <div>
+                                <h2>
+                                    {selectedUser.fullName ||
+                                        selectedUser.email}
+                                </h2>
 
-                            <p>
-                                Email: <b>{selectedUser.email}</b>
-                            </p>
+                                <p>
+                                    Email: <b>{selectedUser.email}</b>
+                                </p>
 
-                            <p>
-                                Trạng thái:{' '}
-                                <StatusTag value={selectedUser.status} />
-                            </p>
+                                <p>
+                                    Trạng thái:{' '}
+                                    <StatusTag value={selectedUser.status} />
+                                </p>
 
-                            <p>
-                                Đăng nhập cuối:{' '}
-                                {formatDateTime(selectedUser.lastLoginAt)}
-                            </p>
+                                <Space wrap style={{ marginBottom: 16 }}>
+                                    <Button
+                                        disabled={isCurrentSessionUser(
+                                            selectedUser,
+                                        )}
+                                        onClick={() =>
+                                            handleUpdateStatus(selectedUser)
+                                        }
+                                    >
+                                        {getStatusActionLabel(
+                                            selectedUser.status,
+                                        )}
+                                    </Button>
 
-                            <h3>Vai trò</h3>
-                            <Space wrap>
-                                {selectedUser.roles?.map((role) => (
-                                    <Tag key={role} color="blue">
-                                        {role}
-                                    </Tag>
-                                ))}
-                            </Space>
+                                    {selectedUser.status !== 'DISABLED' && (
+                                        <Button
+                                            danger
+                                            disabled={isCurrentSessionUser(
+                                                selectedUser,
+                                            )}
+                                            onClick={() =>
+                                                handleDisableUser(selectedUser)
+                                            }
+                                        >
+                                            Vô hiệu hóa
+                                        </Button>
+                                    )}
+                                </Space>
 
-                            <h3 style={{ marginTop: 20 }}>Thông tin cá nhân</h3>
+                                {isCurrentSessionUser(selectedUser) && (
+                                    <Alert
+                                        type="info"
+                                        showIcon
+                                        message="Đây là tài khoản đang đăng nhập"
+                                        description="Để tránh tự khóa tài khoản quản trị, hệ thống không cho phép bạn đổi trạng thái tài khoản của chính mình."
+                                        style={{ marginBottom: 16 }}
+                                    />
+                                )}
 
-                            <p>
-                                SĐT:{' '}
-                                {selectedUser.phoneNumber || 'Chưa cập nhật'}
-                            </p>
+                                <p>
+                                    Đăng nhập cuối:{' '}
+                                    {formatDateTime(selectedUser.lastLoginAt)}
+                                </p>
 
-                            <p>
-                                Giới tính:{' '}
-                                {selectedUser.gender || 'Chưa cập nhật'}
-                            </p>
+                                <h3>Vai trò</h3>
+                                <Space wrap>
+                                    {selectedUser.roles?.map((role) => (
+                                        <Tag key={role} color="blue">
+                                            {role}
+                                        </Tag>
+                                    ))}
+                                </Space>
 
-                            <p>
-                                Địa chỉ:{' '}
-                                {selectedUser.address || 'Chưa cập nhật'}
-                            </p>
+                                <h3 style={{ marginTop: 20 }}>
+                                    Thông tin cá nhân
+                                </h3>
 
-                            {selectedUser.roles?.includes('DOCTOR') && (
-                                <>
-                                    <h3 style={{ marginTop: 20 }}>
-                                        Hồ sơ bác sĩ
-                                    </h3>
+                                <p>
+                                    SĐT:{' '}
+                                    {selectedUser.phoneNumber ||
+                                        'Chưa cập nhật'}
+                                </p>
 
-                                    <p>
-                                        Chuyên khoa:{' '}
-                                        <b>
-                                            {selectedUser.specialtyName ||
-                                                'Chưa gán'}
-                                        </b>
-                                    </p>
+                                <p>
+                                    Giới tính:{' '}
+                                    {selectedUser.gender || 'Chưa cập nhật'}
+                                </p>
 
-                                    <p>
-                                        Giấy phép:{' '}
-                                        {selectedUser.licenseNumber ||
-                                            'Chưa cập nhật'}
-                                    </p>
+                                <p>
+                                    Địa chỉ:{' '}
+                                    {selectedUser.address || 'Chưa cập nhật'}
+                                </p>
 
-                                    <p>
-                                        Học vị:{' '}
-                                        {selectedUser.degree ||
-                                            'Chưa cập nhật'}
-                                    </p>
+                                {selectedUser.roles?.includes('DOCTOR') && (
+                                    <>
+                                        <h3 style={{ marginTop: 20 }}>
+                                            Hồ sơ bác sĩ
+                                        </h3>
 
-                                    <p>
-                                        Kinh nghiệm:{' '}
-                                        {selectedUser.experienceYears || 0} năm
-                                    </p>
+                                        <p>
+                                            Chuyên khoa:{' '}
+                                            <b>
+                                                {selectedUser.specialtyName ||
+                                                    'Chưa gán'}
+                                            </b>
+                                        </p>
 
-                                    <p>
-                                        Giới thiệu:{' '}
-                                        {selectedUser.bio ||
-                                            'Chưa cập nhật'}
-                                    </p>
-                                </>
-                            )}
+                                        <p>
+                                            Giấy phép:{' '}
+                                            {selectedUser.licenseNumber ||
+                                                'Chưa cập nhật'}
+                                        </p>
 
-                            <h3 style={{ marginTop: 20 }}>Permissions</h3>
+                                        <p>
+                                            Học vị:{' '}
+                                            {selectedUser.degree ||
+                                                'Chưa cập nhật'}
+                                        </p>
 
-                            <Space wrap>
-                                {selectedUser.permissions?.map((permission) => (
-                                    <Tag key={permission}>
-                                        {permission}
-                                    </Tag>
-                                ))}
-                            </Space>
-                        </div>
-                    )}
+                                        <p>
+                                            Kinh nghiệm:{' '}
+                                            {selectedUser.experienceYears || 0}{' '}
+                                            năm
+                                        </p>
+
+                                        <p>
+                                            Giới thiệu:{' '}
+                                            {selectedUser.bio ||
+                                                'Chưa cập nhật'}
+                                        </p>
+                                    </>
+                                )}
+
+                                <h3 style={{ marginTop: 20 }}>Permissions</h3>
+
+                                <Space wrap>
+                                    {selectedUser.permissions?.map(
+                                        (permission) => (
+                                            <Tag key={permission}>
+                                                {permission}
+                                            </Tag>
+                                        ),
+                                    )}
+                                </Space>
+                            </div>
+                        )}
+                    </ClinicalPageState>
                 </Drawer>
             </RoleGuardState>
         </DashboardFrame>

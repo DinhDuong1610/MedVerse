@@ -55,3 +55,8 @@ export type AdminCreateStaffPayload = {
     experienceYears?: number;
     bio?: string;
 };
+
+export type AdminUpdateUserStatusPayload = {
+    status: AdminUserStatus;
+    reason?: string;
+};

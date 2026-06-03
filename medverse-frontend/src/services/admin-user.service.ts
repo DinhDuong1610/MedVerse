@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/api/http';
 import type {
     AdminCreateStaffPayload,
+    AdminUpdateUserStatusPayload,
     AdminUser,
     AdminUserRoleCode,
 } from '@/types/admin-user';
@@ -34,6 +35,18 @@ export async function getAdminUserById(id: string) {
 export async function createAdminStaff(payload: AdminCreateStaffPayload) {
     const res = await apiRequest<AdminUser>('/v1/admin/users/staff', {
         method: 'POST',
+        body: payload,
+    });
+
+    return res.data;
+}
+
+export async function updateAdminUserStatus(
+    id: string,
+    payload: AdminUpdateUserStatusPayload,
+) {
+    const res = await apiRequest<AdminUser>(`/v1/admin/users/${id}/status`, {
+        method: 'PATCH',
         body: payload,
     });
 

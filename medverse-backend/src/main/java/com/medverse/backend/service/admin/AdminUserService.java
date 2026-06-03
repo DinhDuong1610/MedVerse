@@ -24,6 +24,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.medverse.backend.payload.admin.AdminUpdateUserStatusRequest;
 
 import java.util.Comparator;
 import java.util.HashSet;
@@ -120,6 +121,40 @@ public class AdminUserService {
                 "Created " + roleCode + " account: " + savedUser.getEmail());
 
         return toDto(savedUser);
+    }
+
+    @Transactional
+    public AdminUserDto updateUserStatus(
+            User currentUser,
+            UUID userId,
+            AdminUpdateUserStatusRequest request) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+
+        if (currentUser != null && currentUser.getId().equals(user.getId())) {
+            throw new IllegalStateException("Admin cannot change status of their own account.");
+        }
+
+        UserStatus oldStatus = user.getStatus();
+        UserStatus newStatus = request.getStatus();
+
+        user.setStatus(newStatus);
+
+        User saved = userRepository.save(user);
+
+        auditService.record(
+                "ADMIN_UPDATE_USER_STATUS",
+                "USER",
+                saved.getId().toString(),
+                "Changed user status from "
+                        + oldStatus
+                        + " to "
+                        + newStatus
+                        + ". Reason: "
+                        + (request.getReason() != null ? request.getReason() : "N/A"));
+
+        return toDto(saved);
     }
 
     private AdminUserDto toDto(User user) {

@@ -15,6 +15,9 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import com.medverse.backend.entity.User;
+import com.medverse.backend.payload.admin.AdminUpdateUserStatusRequest;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.util.UUID;
 
@@ -57,5 +60,18 @@ public class AdminUserController {
 
         return ResponseEntity.ok(
                 new AppResponse<>("SUCCESS", "Staff account created.", result, null));
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AppResponse<AdminUserDto>> updateUserStatus(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID id,
+            @Valid @RequestBody AdminUpdateUserStatusRequest request) {
+
+        AdminUserDto result = adminUserService.updateUserStatus(currentUser, id, request);
+
+        return ResponseEntity.ok(
+                new AppResponse<>("SUCCESS", "User status updated.", result, null));
     }
 }
