@@ -20,6 +20,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.medverse.backend.service.notification.NotificationService;
+import com.medverse.backend.utils.enumeration.NotificationType;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -35,6 +37,7 @@ public class AppointmentRequestService {
     private final SpecialtyRepository specialtyRepository;
     private final AppointmentMapper appointmentMapper;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     @Transactional
     public AppointmentRequestDto createRequest(UUID patientId, AppointmentRequestCreateDto dto) {
@@ -88,7 +91,16 @@ public class AppointmentRequestService {
                 savedRequest.getId().toString(),
                 "Patient " + patientId + " requested appointment for date: " + dto.getDesiredDate());
 
+        notificationService.notify(
+                patient,
+                NotificationType.APPOINTMENT_REQUEST_CREATED,
+                "Đã gửi yêu cầu đặt lịch",
+                "Yêu cầu đặt lịch ngày " + dto.getDesiredDate() + " đã được gửi và đang chờ lễ tân duyệt.",
+                "APPOINTMENT_REQUEST",
+                savedRequest.getId().toString());
+
         return appointmentMapper.toDto(savedRequest);
+
     }
 
     public Page<AppointmentRequestDto> getMyRequests(UUID patientId, Pageable pageable) {
@@ -123,6 +135,14 @@ public class AppointmentRequestService {
                 "APPOINTMENT_REQUEST",
                 requestId.toString(),
                 "Patient " + patientId + " cancelled appointment request");
+
+        notificationService.notify(
+                request.getPatient(),
+                NotificationType.APPOINTMENT_REQUEST_CANCELLED,
+                "Đã hủy yêu cầu đặt lịch",
+                "Yêu cầu đặt lịch của bạn đã được hủy.",
+                "APPOINTMENT_REQUEST",
+                request.getId().toString());
     }
 
     @Transactional
@@ -143,6 +163,14 @@ public class AppointmentRequestService {
                 "APPOINTMENT_REQUEST",
                 requestId.toString(),
                 "Reason: " + reason);
+
+        notificationService.notify(
+                saved.getPatient(),
+                NotificationType.APPOINTMENT_REQUEST_REJECTED,
+                "Yêu cầu đặt lịch bị từ chối",
+                "Lý do: " + reason,
+                "APPOINTMENT_REQUEST",
+                saved.getId().toString());
 
         return appointmentMapper.toDto(saved);
     }

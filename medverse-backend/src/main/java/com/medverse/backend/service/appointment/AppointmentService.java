@@ -23,6 +23,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.medverse.backend.service.notification.NotificationService;
+import com.medverse.backend.utils.enumeration.NotificationType;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -37,6 +39,7 @@ public class AppointmentService {
     private final WorkSlotRepository workSlotRepository;
     private final AppointmentMapper appointmentMapper;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     public AppointmentDto getAppointmentById(UUID id, User currentUser) {
         Appointment appointment = appointmentRepository.findById(id)
@@ -118,6 +121,22 @@ public class AppointmentService {
                 savedAppointment.getId().toString(),
                 "Approved request " + requestId + " with slot " + workSlotId);
 
+        notificationService.notify(
+                savedAppointment.getPatient(),
+                NotificationType.APPOINTMENT_REQUEST_APPROVED,
+                "Yêu cầu đặt lịch đã được duyệt",
+                "Lịch hẹn của bạn đã được tạo vào " + savedAppointment.getStartTime() + ".",
+                "APPOINTMENT",
+                savedAppointment.getId().toString());
+
+        notificationService.notify(
+                savedAppointment.getDoctor(),
+                NotificationType.APPOINTMENT_REQUEST_APPROVED,
+                "Có lịch khám mới",
+                "Bạn có lịch khám mới với bệnh nhân " + savedAppointment.getPatient().getEmail() + ".",
+                "APPOINTMENT",
+                savedAppointment.getId().toString());
+
         return appointmentMapper.toDto(savedAppointment);
     }
 
@@ -154,6 +173,22 @@ public class AppointmentService {
                 "APPOINTMENT",
                 appointmentId.toString(),
                 "Reason: " + reason);
+
+        notificationService.notify(
+                appointment.getPatient(),
+                NotificationType.APPOINTMENT_CANCELLED,
+                "Lịch hẹn đã bị hủy",
+                "Lý do: " + reason,
+                "APPOINTMENT",
+                appointment.getId().toString());
+
+        notificationService.notify(
+                appointment.getDoctor(),
+                NotificationType.APPOINTMENT_CANCELLED,
+                "Một lịch khám đã bị hủy",
+                "Lý do: " + reason,
+                "APPOINTMENT",
+                appointment.getId().toString());
     }
 
     @Transactional
@@ -213,6 +248,22 @@ public class AppointmentService {
                 "APPOINTMENT",
                 appointmentId.toString(),
                 "Rescheduled to new slot: " + newWorkSlotId);
+
+        notificationService.notify(
+                updatedAppointment.getPatient(),
+                NotificationType.APPOINTMENT_RESCHEDULED,
+                "Lịch hẹn đã được đổi giờ",
+                "Lịch hẹn mới bắt đầu lúc " + updatedAppointment.getStartTime() + ".",
+                "APPOINTMENT",
+                updatedAppointment.getId().toString());
+
+        notificationService.notify(
+                updatedAppointment.getDoctor(),
+                NotificationType.APPOINTMENT_RESCHEDULED,
+                "Lịch khám đã được đổi giờ",
+                "Lịch khám mới bắt đầu lúc " + updatedAppointment.getStartTime() + ".",
+                "APPOINTMENT",
+                updatedAppointment.getId().toString());
 
         return appointmentMapper.toDto(updatedAppointment);
     }

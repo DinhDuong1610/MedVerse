@@ -260,3 +260,15 @@ export type WorkSlotCreatePayload = {
     startTime: string;
     endTime: string;
 };
+
+export type AppNotification = {
+    id: string;
+    type: string;
+    title: string;
+    message?: string;
+    entityType?: string;
+    entityId?: string;
+    read: boolean;
+    readAt?: string;
+    createdAt?: string;
+};
