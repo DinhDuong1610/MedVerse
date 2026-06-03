@@ -10,4 +10,5 @@ import java.util.UUID;
 @Repository
 public interface AllergyRepository extends JpaRepository<Allergy, UUID> {
     List<Allergy> findByPatientIdOrderByCreatedAtDesc(UUID patientId);
+    
 }

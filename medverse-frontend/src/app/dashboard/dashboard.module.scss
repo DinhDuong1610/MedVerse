@@ -222,3 +222,306 @@
         align-items: flex-start;
     }
 }
+
+.roleDashboard {
+    margin-top: 24px;
+    display: grid;
+    gap: 24px;
+}
+
+.metricGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.metricCard {
+    min-height: 150px;
+    padding: 22px;
+    border-radius: 28px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72)),
+        radial-gradient(circle at top right, rgba(25, 182, 164, 0.16), transparent 70%);
+    border: 1px solid rgba(16, 32, 31, 0.08);
+    box-shadow: 0 24px 60px rgba(10, 54, 65, 0.08);
+
+    span {
+        display: block;
+        margin-top: 16px;
+        color: #6a7c7a;
+        font-size: 13px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+    }
+
+    strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 30px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+        color: #10201f;
+    }
+
+    p {
+        margin-top: 10px;
+        color: #6a7c7a;
+        font-weight: 600;
+    }
+}
+
+.metricIcon {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: rgba(25, 182, 164, 0.12);
+    color: #087b72;
+    font-size: 22px;
+}
+
+.clinicalGrid {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 20px;
+}
+
+.clinicalPanel {
+    padding: 26px;
+    border-radius: 32px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(16, 32, 31, 0.08);
+    box-shadow: 0 24px 60px rgba(10, 54, 65, 0.08);
+}
+
+.panelHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 20px;
+
+    span {
+        display: block;
+        color: #19b6a4;
+        font-size: 12px;
+        font-weight: 950;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+    }
+
+    h2 {
+        margin-top: 8px;
+        font-size: 26px;
+        letter-spacing: -0.04em;
+    }
+}
+
+.profileMatrix {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+
+    div {
+        padding: 18px;
+        border-radius: 22px;
+        background: rgba(25, 182, 164, 0.07);
+        border: 1px solid rgba(25, 182, 164, 0.1);
+    }
+
+    span {
+        display: block;
+        color: #6a7c7a;
+        font-weight: 850;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    strong {
+        display: block;
+        margin-top: 8px;
+        color: #10201f;
+        line-height: 1.5;
+    }
+}
+
+.emptyState {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    padding: 26px;
+    color: #6a7c7a;
+
+    svg {
+        font-size: 38px;
+        color: #19b6a4;
+    }
+
+    h3 {
+        margin-top: 16px;
+        color: #10201f;
+        font-size: 20px;
+    }
+
+    p {
+        margin-top: 8px;
+        max-width: 420px;
+        line-height: 1.6;
+    }
+}
+
+.cleanListItem {
+    padding: 16px !important;
+    border-radius: 20px;
+    border: 1px solid rgba(16, 32, 31, 0.08) !important;
+    margin-bottom: 10px;
+}
+
+.listTitle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.recordTimeline,
+.prescriptionGrid {
+    display: grid;
+    gap: 14px;
+}
+
+.recordCard,
+.prescriptionCard {
+    padding: 20px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #ffffff, #f5fbfa);
+    border: 1px solid rgba(16, 32, 31, 0.08);
+
+    h3 {
+        margin-top: 12px;
+        font-size: 20px;
+        letter-spacing: -0.03em;
+    }
+
+    p {
+        margin-top: 8px;
+        color: #6a7c7a;
+        line-height: 1.6;
+    }
+}
+
+.medicationList {
+    margin-top: 14px;
+    display: grid;
+    gap: 10px;
+
+    div {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(25, 182, 164, 0.07);
+    }
+
+    strong,
+    span {
+        display: block;
+    }
+
+    span {
+        margin-top: 4px;
+        color: #6a7c7a;
+        font-size: 13px;
+    }
+}
+
+.caseItem {
+    display: block !important;
+    padding: 18px !important;
+    border-radius: 24px;
+    border: 1px solid rgba(16, 32, 31, 0.08) !important;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, #ffffff, #f6fffd);
+}
+
+.caseContent {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+
+    p {
+        margin-top: 10px;
+        color: #6a7c7a;
+    }
+}
+
+.caseMeta {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: #6a7c7a;
+}
+
+.caseAction {
+    flex-shrink: 0;
+}
+
+.alertStrip {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(16, 32, 31, 0.08);
+}
+
+.placeholderHero {
+    min-height: 360px;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    padding: 40px;
+
+    svg {
+        font-size: 46px;
+        color: #19b6a4;
+    }
+
+    h2 {
+        margin-top: 20px;
+        font-size: 34px;
+        letter-spacing: -0.05em;
+    }
+
+    p {
+        margin-top: 14px;
+        max-width: 560px;
+        color: #6a7c7a;
+        line-height: 1.7;
+    }
+}
+
+@media (max-width: 1120px) {
+    .metricGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .clinicalGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 620px) {
+
+    .metricGrid,
+    .profileMatrix {
+        grid-template-columns: 1fr;
+    }
+
+    .caseContent,
+    .panelHeader {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
