@@ -1,0 +1,26 @@
+# Copy file này vào root project nếu muốn chạy seed bằng service riêng.
+# Chạy ví dụ:
+#   docker compose -f docker-compose.yml -f seed-data/docker-compose.demo-seed.yml run --rm demo-seed
+# Lưu ý chỉnh POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB nếu docker-compose.yml của bạn dùng tên khác.
+
+services:
+  demo-seed:
+    image: postgres:16-alpine
+    depends_on:
+      - postgres
+    working_dir: /seed-data
+    volumes:
+      - ./seed-data:/seed-data:ro
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-medverse_password}
+      POSTGRES_USER: ${POSTGRES_USER:-medverse_user}
+      POSTGRES_DB: ${POSTGRES_DB:-medverse}
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "echo 'Waiting PostgreSQL...' &&
+       until pg_isready -h postgres -p 5432 -U $$POSTGRES_USER; do sleep 2; done &&
+       echo 'Import AI medications...' &&
+       psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -v ON_ERROR_STOP=1 -f /seed-data/sql/02_ai_medications_from_atc.sql &&
+       echo 'Reset core demo data...' &&
+       psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -v ON_ERROR_STOP=1 -f /seed-data/sql/01_demo_reset_core.sql &&
+       echo 'Done: MedVerse demo seed restored.'"

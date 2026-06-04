@@ -1,0 +1,35 @@
+# Stable Demo UUIDs
+
+- `admin`: `49e8a779-2722-584b-940e-62e848685d71`
+- `doctor`: `1ff22e3e-d592-51e5-8fec-f579ea92e703`
+- `receptionist`: `22422a7f-af57-5091-8162-a42e9f0b513a`
+- `patient`: `2dfbdbe2-96ca-5968-9620-e2e1b918e4b3`
+- `spec_general`: `d9e4f2c2-783a-5a9b-8a9b-3ef6b99f873b`
+- `spec_cardio`: `fc564c96-ac5f-5913-928a-40ce26a7fc15`
+- `spec_pedia`: `5cd99aa2-c20e-5f93-bf2c-37ec2a7ade00`
+- `slot_1`: `b4b0b265-a02f-5edf-84c1-9e9bfb846d6a`
+- `slot_2`: `c52f7bac-4d6e-54dc-bbc5-c14374df382e`
+- `slot_3`: `df0c605c-b9a9-5c33-82d9-56ad7aa836b8`
+- `slot_4`: `4e3e70c3-db9d-52f5-84b5-747d4179b33c`
+- `slot_5`: `4e052a67-f768-5be4-8228-1f80df073a8d`
+- `slot_6`: `9ccd9d59-0d3c-5e15-a85d-77f2255aaee1`
+- `req_pending_1`: `6408f695-cf13-5787-98cb-80c9f1ded976`
+- `req_pending_2`: `069b1435-58a8-509e-8213-8e5b17848df0`
+- `req_approved`: `adeec098-59f8-5868-bff1-f6e8fa8087ed`
+- `appt_confirmed`: `4ef98229-d371-5e7b-9883-2d11f05f2532`
+- `appt_completed`: `a3d95f3c-20c5-5337-9a17-4b57a2dd8858`
+- `profile_patient`: `811575ad-e819-5a4d-8c13-7eed5b590109`
+- `allergy_penicillin`: `732693cf-b325-572e-8b40-fb43942ee5ac`
+- `allergy_seafood`: `a1614a5a-0f6e-528b-8990-0b890baf14a3`
+- `record_completed`: `ffc5abdf-8d7d-5cdd-84c7-0dcd64a0e95b`
+- `record_draft`: `b761b9af-d459-5e4d-8d7a-91ee79db4bf1`
+- `diag_completed_1`: `95b2dadf-aa34-5109-9e23-3ff1397c295f`
+- `diag_completed_2`: `2d17f9b3-5d99-5c23-8f3e-cecbc5c9c879`
+- `prescription_completed`: `55c03fe7-9f96-5312-bb78-71b39d2c3cc9`
+- `rx_item_para`: `b5e51c34-0ca8-5fbb-a27e-9ffb2d646220`
+- `rx_item_acetyl`: `234e2fd2-1884-5530-a300-ae4c21955b92`
+- `rx_alert`: `62aa10f6-5cc2-5af2-9b2f-cc852873b617`
+- `service_general`: `44a96ba5-7883-5627-8e61-812c34b40fc2`
+- `service_follow`: `d8891a13-9f93-59af-9225-c18192412d30`
+- `invoice_paid`: `872c80e6-bdca-59b3-8136-e3fcec7bc84f`
+- `invoice_item_general`: `896bbdbd-3869-5ed7-9ca6-878e710bba7b`
