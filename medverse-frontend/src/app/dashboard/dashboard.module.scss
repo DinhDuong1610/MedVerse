@@ -542,3 +542,25 @@
 .navItemActive {
     text-decoration: none;
 }
+
+.quickActionGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+
+    a {
+        text-decoration: none;
+    }
+}
+
+.mutedText {
+    margin: 0;
+    color: #6a7c7a;
+    line-height: 1.7;
+}
+
+@media (max-width: 760px) {
+    .quickActionGrid {
+        grid-template-columns: 1fr;
+    }
+}

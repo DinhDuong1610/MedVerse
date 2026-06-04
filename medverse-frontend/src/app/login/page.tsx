@@ -1,59 +1,32 @@
 'use client';
 
-import { Alert, Button, Form, Input, message } from 'antd';
+import {
+    Button,
+    Checkbox,
+    Form,
+    Input,
+    Typography,
+    message,
+} from 'antd';
 import {
     ArrowRightOutlined,
     LockOutlined,
     MailOutlined,
+    MedicineBoxOutlined,
     SafetyCertificateOutlined,
+    TeamOutlined,
 } from '@ant-design/icons';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import MedVerseMark from '@/components/brand/MedVerseMark';
 import { login } from '@/services/auth.service';
-import type { DemoRole } from '@/types/auth';
 import styles from './login.module.scss';
-
-const demoAccounts: Array<{
-    role: DemoRole;
-    title: string;
-    email: string;
-    password: string;
-    accent: string;
-}> = [
-        {
-            role: 'DOCTOR',
-            title: 'Bác sĩ',
-            email: 'doctor.demo@medverse.vn',
-            password: 'Doctor@123456',
-            accent: '#19b6a4',
-        },
-        {
-            role: 'RECEPTIONIST',
-            title: 'Lễ tân',
-            email: 'receptionist.demo@medverse.vn',
-            password: 'Receptionist@123456',
-            accent: '#3b82f6',
-        },
-        {
-            role: 'PATIENT',
-            title: 'Bệnh nhân',
-            email: 'patient.demo@medverse.vn',
-            password: 'Patient@123456',
-            accent: '#f59e0b',
-        },
-        {
-            role: 'ADMIN',
-            title: 'Quản trị',
-            email: 'admin@medverse.vn',
-            password: 'Admin@123456',
-            accent: '#7c3aed',
-        },
-    ];
 
 type FormValues = {
     email: string;
     password: string;
+    remember?: boolean;
 };
 
 export default function LoginPage() {
@@ -64,135 +37,181 @@ export default function LoginPage() {
     const handleSubmit = async (values: FormValues) => {
         try {
             setLoading(true);
-            const result = await login(values);
 
-            message.success(`Đăng nhập thành công với vai trò ${result.role}`);
+            await login({
+                email: values.email.trim(),
+                password: values.password,
+            });
+
+            message.success('Đăng nhập thành công.');
             router.replace('/dashboard');
         } catch (error) {
             message.error(
                 error instanceof Error
                     ? error.message
-                    : 'Không thể đăng nhập. Vui lòng thử lại.',
+                    : 'Thông tin đăng nhập chưa chính xác. Vui lòng kiểm tra lại.',
             );
         } finally {
             setLoading(false);
         }
     };
 
-    const fillAccount = (email: string, password: string) => {
-        form.setFieldsValue({ email, password });
-    };
-
     return (
         <main className={styles.loginShell}>
-            <section className={styles.leftPanel}>
-                <div className={styles.brandBlock}>
+            <section className={styles.brandPanel}>
+                <div className={styles.brandTop}>
                     <MedVerseMark />
+
+                    <div className={styles.secureBadge}>
+                        <SafetyCertificateOutlined />
+                        <span>Truy cập bảo mật</span>
+                    </div>
                 </div>
 
                 <div className={styles.heroContent}>
-                    <div className={styles.badge}>
-                        <SafetyCertificateOutlined />
-                        AI-ready clinic operating system
-                    </div>
+                    <p className={styles.eyebrow}>Nền tảng quản lý phòng khám</p>
 
                     <h1>
-                        Một không gian điều phối phòng khám mang phong cách riêng của
-                        MedVerse.
+                        Hệ thống quản lý phòng khám - y tế hiện đại
                     </h1>
 
-                    <p>
-                        Quản lý lịch hẹn, bệnh án điện tử, đơn thuốc và AI hỗ trợ lâm sàng
-                        trong một trải nghiệm thống nhất.
+                    <p className={styles.heroDescription}>
+                        MedVerse hỗ trợ đội ngũ y tế vận hành quy trình khám
+                        bệnh rõ ràng, an toàn và nhất quán hơn từ tiếp nhận,
+                        thăm khám đến theo dõi sau điều trị.
                     </p>
                 </div>
 
-                <div className={styles.signalBoard}>
-                    <div>
-                        <span>Live modules</span>
-                        <strong>Auth · EHR · Prescription · AI</strong>
-                    </div>
-                    <div>
-                        <span>Demo data</span>
-                        <strong>Ready for role-based UI</strong>
-                    </div>
+                <div className={styles.featureGrid}>
+                    <article>
+                        <div className={styles.featureIcon}>
+                            <MedicineBoxOutlined />
+                        </div>
+
+                        <div>
+                            <strong>Quản lý lâm sàng</strong>
+                            <span>
+                                Bệnh án điện tử, đơn thuốc và kiểm tra an toàn
+                                điều trị.
+                            </span>
+                        </div>
+                    </article>
+
+                    <article>
+                        <div className={styles.featureIcon}>
+                            <TeamOutlined />
+                        </div>
+
+                        <div>
+                            <strong>Phối hợp đa vai trò</strong>
+                            <span>
+                                Bệnh nhân, lễ tân, bác sĩ và quản trị viên làm
+                                việc trên cùng một nền tảng.
+                            </span>
+                        </div>
+                    </article>
                 </div>
 
-                <div className={styles.orbitOne} />
-                <div className={styles.orbitTwo} />
+                <div className={styles.decorCircleOne} />
+                <div className={styles.decorCircleTwo} />
             </section>
 
             <section className={styles.formPanel}>
                 <div className={styles.formCard}>
+                    <div className={styles.mobileBrand}>
+                        <MedVerseMark compact />
+                    </div>
+
                     <div className={styles.cardHeader}>
-                        <span className={styles.kicker}>Secure access</span>
-                        <h2>Đăng nhập MedVerse</h2>
-                        <p>Chọn nhanh tài khoản demo hoặc nhập thông tin thủ công.</p>
+                        <p>Đăng nhập hệ thống</p>
+                        <h2>Chào mừng trở lại</h2>
+                        <span>
+                            Vui lòng sử dụng tài khoản đã được cấp để truy cập
+                            không gian làm việc MedVerse.
+                        </span>
                     </div>
-
-                    <div className={styles.accountGrid}>
-                        {demoAccounts.map((account) => (
-                            <button
-                                key={account.email}
-                                type="button"
-                                className={styles.accountCard}
-                                style={{ '--accent': account.accent } as React.CSSProperties}
-                                onClick={() => fillAccount(account.email, account.password)}
-                            >
-                                <span>{account.title}</span>
-                                <strong>{account.email}</strong>
-                            </button>
-                        ))}
-                    </div>
-
-                    <Alert
-                        className={styles.demoHint}
-                        type="info"
-                        showIcon
-                        message="Dữ liệu demo đã được seed từ Task 8. Dùng các tài khoản trên để kiểm thử UI theo từng vai trò."
-                    />
 
                     <Form
                         form={form}
                         layout="vertical"
                         onFinish={handleSubmit}
                         className={styles.form}
+                        requiredMark={false}
                     >
                         <Form.Item
                             label="Email"
                             name="email"
                             rules={[
-                                { required: true, message: 'Vui lòng nhập email' },
-                                { type: 'email', message: 'Email không hợp lệ' },
+                                {
+                                    required: true,
+                                    message: 'Vui lòng nhập email.',
+                                },
+                                {
+                                    type: 'email',
+                                    message: 'Email không hợp lệ.',
+                                },
                             ]}
                         >
                             <Input
+                                size="large"
                                 prefix={<MailOutlined />}
-                                placeholder="doctor.demo@medverse.vn"
+                                placeholder="name@medverse.vn"
+                                autoComplete="email"
                             />
                         </Form.Item>
 
                         <Form.Item
                             label="Mật khẩu"
                             name="password"
-                            rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Vui lòng nhập mật khẩu.',
+                                },
+                            ]}
                         >
                             <Input.Password
+                                size="large"
                                 prefix={<LockOutlined />}
-                                placeholder="••••••••"
+                                placeholder="Nhập mật khẩu"
+                                autoComplete="current-password"
                             />
                         </Form.Item>
+
+                        <div className={styles.formMeta}>
+                            <Form.Item name="remember" valuePropName="checked" noStyle>
+                                <Checkbox>Ghi nhớ phiên đăng nhập</Checkbox>
+                            </Form.Item>
+
+                            <Typography.Text className={styles.supportText}>
+                                Cần hỗ trợ? Liên hệ quản trị viên.
+                            </Typography.Text>
+                        </div>
 
                         <Button
                             type="primary"
                             htmlType="submit"
                             loading={loading}
                             block
+                            size="large"
                             className={styles.loginButton}
                         >
-                            Vào không gian làm việc <ArrowRightOutlined />
+                            Đăng nhập
+                            <ArrowRightOutlined />
                         </Button>
                     </Form>
+
+                    <Typography.Paragraph className={styles.registerHint}>
+                        Chưa có tài khoản? <Link href="/register">Đăng ký ngay</Link>
+                    </Typography.Paragraph>
+
+                    <div className={styles.complianceNote}>
+                        <SafetyCertificateOutlined />
+                        <span>
+                            Dữ liệu y tế được bảo vệ theo cơ chế phân quyền và
+                            xác thực người dùng.
+                        </span>
+                    </div>
                 </div>
             </section>
         </main>

@@ -3,7 +3,11 @@ import {
     buildAuthSession,
     saveAuthSession,
 } from '@/lib/auth/auth-storage';
-import type { AuthResponse, LoginRequest } from '@/types/auth';
+import type {
+    AuthResponse,
+    LoginRequest,
+    RegisterRequest,
+} from '@/types/auth';
 
 export async function login(request: LoginRequest) {
     const response = await apiRequest<AuthResponse>('/auth/login', {
@@ -23,4 +27,14 @@ export async function login(request: LoginRequest) {
         roles: session.roles,
         permissions: session.permissions,
     };
+}
+
+export async function register(request: RegisterRequest) {
+    const response = await apiRequest<null>('/auth/register', {
+        method: 'POST',
+        body: request,
+        auth: false,
+    });
+
+    return response;
 }

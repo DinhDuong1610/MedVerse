@@ -8,7 +8,30 @@ import DoctorDashboard from './_components/DoctorDashboard';
 import PatientPortalDashboard from './_components/PatientPortalDashboard';
 import PatientPortalFrame from './_components/PatientPortalFrame';
 import StaffDashboardPlaceholder from './_components/StaffDashboardPlaceholder';
-import styles from './dashboard.module.scss';
+
+function getDashboardTitle(role?: string) {
+    if (role === 'ADMIN') return 'Trung tâm quản trị';
+    if (role === 'DOCTOR') return 'Không gian bác sĩ';
+    if (role === 'RECEPTIONIST') return 'Không gian lễ tân';
+
+    return 'Tổng quan';
+}
+
+function getDashboardSubtitle(role?: string) {
+    if (role === 'ADMIN') {
+        return 'Theo dõi vận hành, nhân sự, phân quyền và dữ liệu hệ thống.';
+    }
+
+    if (role === 'DOCTOR') {
+        return 'Quản lý lịch khám, ca khám, bệnh án và đơn thuốc của bệnh nhân.';
+    }
+
+    if (role === 'RECEPTIONIST') {
+        return 'Tiếp nhận yêu cầu đặt lịch, điều phối lịch hẹn và hỗ trợ bệnh nhân.';
+    }
+
+    return 'Theo dõi nhanh các hoạt động quan trọng trong hệ thống.';
+}
 
 export default function DashboardPage() {
     const { session, loading } = useAuthSession();
@@ -28,27 +51,9 @@ export default function DashboardPage() {
     return (
         <DashboardFrame
             session={session}
-            title="Tổng quan"
-            subtitle="Không gian điều phối lâm sàng theo quyền truy cập"
+            title={getDashboardTitle(session.primaryRole || session.role)}
+            subtitle={getDashboardSubtitle(session.primaryRole || session.role)}
         >
-            <section className={styles.heroCard}>
-                <div>
-                    <span>MedVerse clinical workspace</span>
-                    <h2>
-                        Dashboard được cá nhân hóa theo quyền thật từ backend.
-                    </h2>
-                    <p>
-                        Giao diện này dùng session có roles và permissions sau
-                        Task 22 để hiển thị module phù hợp cho từng tài khoản.
-                    </p>
-                </div>
-
-                <div className={styles.pulseCard}>
-                    <strong>{session.primaryRole}</strong>
-                    <span>{session.permissions.length} permissions enabled</span>
-                </div>
-            </section>
-
             {hasRole(session, 'DOCTOR') && <DoctorDashboard />}
 
             {(hasRole(session, 'ADMIN') || hasRole(session, 'RECEPTIONIST')) && (

@@ -18,6 +18,16 @@ export type LoginRequest = {
     password: string;
 };
 
+export type RegisterRequest = {
+    email: string;
+    password: string;
+    fullName: string;
+    dateOfBirth?: string;
+    gender?: string;
+    phoneNumber?: string;
+    address?: string;
+};
+
 export type AuthSession = {
     userId: string;
     email: string;
@@ -28,10 +38,6 @@ export type AuthSession = {
 
     primaryRole: string;
 
-    /**
-     * Legacy alias để các page cũ chưa bị vỡ.
-     * Từ các task sau, ưu tiên dùng roles/permissions.
-     */
     role: DemoRole;
 
     accessToken: string;

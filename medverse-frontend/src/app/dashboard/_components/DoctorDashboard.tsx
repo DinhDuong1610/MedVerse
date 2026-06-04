@@ -6,9 +6,9 @@ import {
     MedicineBoxOutlined,
     RobotOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, List, Skeleton, Tag, message } from 'antd';
-import { useEffect, useState } from 'react';
-import MetricCard from './MetricCard';
+import { Alert, Button, Card, List, Skeleton, Space, Statistic, Tag, message } from 'antd';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import ClinicalEmptyState from './ClinicalEmptyState';
 import { getAiHealth } from '@/services/ai.service';
 import { getAppointments } from '@/services/appointment.service';
@@ -31,6 +31,12 @@ type DoctorCase = {
     prescription?: Prescription;
 };
 
+function formatDateTime(value?: string) {
+    if (!value) return 'Chưa xác định';
+
+    return new Date(value).toLocaleString('vi-VN');
+}
+
 export default function DoctorDashboard() {
     const [loading, setLoading] = useState(true);
     const [aiHealth, setAiHealth] = useState<AiHealth | null>(null);
@@ -41,10 +47,11 @@ export default function DoctorDashboard() {
     const loadDashboard = async () => {
         try {
             setLoading(true);
+            setError(null);
 
             const [ai, appointmentPage] = await Promise.all([
                 getAiHealth(),
-                getAppointments(),
+                getAppointments({ size: 20 }),
             ]);
 
             setAiHealth(ai);
@@ -54,16 +61,18 @@ export default function DoctorDashboard() {
             const mappedCases = await Promise.all(
                 appointments.map(async (appointment) => {
                     try {
-                        const medicalRecord = await getMedicalRecordByAppointment(
-                            appointment.id,
-                        );
+                        const medicalRecord =
+                            await getMedicalRecordByAppointment(
+                                appointment.id,
+                            );
 
                         let prescription: Prescription | undefined;
 
                         try {
-                            prescription = await getPrescriptionByMedicalRecord(
-                                medicalRecord.id,
-                            );
+                            prescription =
+                                await getPrescriptionByMedicalRecord(
+                                    medicalRecord.id,
+                                );
                         } catch {
                             prescription = undefined;
                         }
@@ -83,7 +92,11 @@ export default function DoctorDashboard() {
 
             setCases(mappedCases);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu bác sĩ.');
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể tải dữ liệu bác sĩ.',
+            );
         } finally {
             setLoading(false);
         }
@@ -98,147 +111,261 @@ export default function DoctorDashboard() {
             setCheckingId(prescriptionId);
 
             await runPrescriptionSafetyCheck(prescriptionId);
-            message.success('Đã chạy kiểm tra an toàn đơn thuốc.');
+            message.success('Đã kiểm tra an toàn đơn thuốc.');
 
             await loadDashboard();
         } catch (err) {
             message.error(
-                err instanceof Error ? err.message : 'Không thể chạy AI safety check.',
+                err instanceof Error
+                    ? err.message
+                    : 'Không thể kiểm tra an toàn đơn thuốc.',
             );
         } finally {
             setCheckingId(null);
         }
     };
 
-    if (loading) {
-        return <Skeleton active paragraph={{ rows: 8 }} />;
-    }
+    const todayCases = useMemo(() => {
+        const today = new Date().toISOString().slice(0, 10);
+
+        return cases.filter((item) =>
+            String(item.appointment.startTime || '').startsWith(today),
+        );
+    }, [cases]);
+
+    const pendingMedicalRecords = cases.filter(
+        (item) => !item.medicalRecord || item.medicalRecord.status !== 'COMPLETED',
+    );
 
     const prescriptionCount = cases.filter((item) => item.prescription).length;
+
     const alertCount = cases.reduce(
         (sum, item) => sum + (item.prescription?.safetyAlerts?.length || 0),
         0,
     );
 
+    if (loading) {
+        return <Skeleton active paragraph={{ rows: 8 }} />;
+    }
+
     return (
         <div className={styles.roleDashboard}>
-            {error && <Alert type="error" showIcon message={error} />}
-
-            <section className={styles.metricGrid}>
-                <MetricCard
-                    label="Lịch khám"
-                    value={cases.length}
-                    caption="Dữ liệu demo đã seed"
-                    icon={<CalendarOutlined />}
+            {error && (
+                <Alert
+                    type="error"
+                    showIcon
+                    message="Không thể tải dashboard bác sĩ"
+                    description={error}
+                    style={{ marginBottom: 20 }}
                 />
+            )}
 
-                <MetricCard
-                    label="Bệnh án"
-                    value={cases.filter((item) => item.medicalRecord).length}
-                    caption="Theo appointment"
-                    icon={<FileProtectOutlined />}
-                />
-
-                <MetricCard
-                    label="Đơn thuốc"
-                    value={prescriptionCount}
-                    caption="Sẵn sàng kiểm tra AI"
-                    icon={<MedicineBoxOutlined />}
-                />
-
-                <MetricCard
-                    label="AI"
-                    value={aiHealth?.status || 'DOWN'}
-                    caption="MedVerse AI service"
-                    icon={<RobotOutlined />}
-                />
-            </section>
-
-            <section className={styles.clinicalPanel}>
-                <div className={styles.panelHeader}>
-                    <div>
-                        <span>Doctor cockpit</span>
-                        <h2>Danh sách ca khám demo</h2>
-                    </div>
-
-                    <Tag color={alertCount > 0 ? 'red' : 'cyan'}>
-                        {alertCount} cảnh báo AI
-                    </Tag>
+            <section className={styles.heroCard}>
+                <div>
+                    <span>Điều phối lâm sàng</span>
+                    <h2>Tập trung vào lịch khám và hồ sơ cần xử lý.</h2>
+                    <p>
+                        Theo dõi ca khám, cập nhật bệnh án, kê đơn thuốc và
+                        kiểm tra an toàn điều trị trước khi hoàn tất hồ sơ.
+                    </p>
                 </div>
 
-                {cases.length === 0 ? (
-                    <ClinicalEmptyState
-                        title="Chưa có lịch khám"
-                        description="Hãy bật DEMO_DATA_ENABLED=true hoặc tạo appointment demo."
+                <div className={styles.pulseCard}>
+                    <strong>{todayCases.length}</strong>
+                    <span>ca khám hôm nay</span>
+                </div>
+            </section>
+
+            <section className={styles.metricGrid}>
+                <Card className={styles.metricCard}>
+                    <Statistic
+                        title="Lịch khám"
+                        value={cases.length}
+                        prefix={<CalendarOutlined />}
                     />
-                ) : (
-                    <List
-                        dataSource={cases}
-                        renderItem={(item) => (
-                            <List.Item className={styles.caseItem}>
-                                <div className={styles.caseContent}>
-                                    <div>
-                                        <div className={styles.listTitle}>
-                                            <strong>
-                                                {item.appointment.patientName || 'Bệnh nhân demo'}
-                                            </strong>
-                                            <Tag color="blue">{item.appointment.status}</Tag>
-                                        </div>
+                    <p>Lịch khám trong phạm vi phụ trách.</p>
+                </Card>
 
-                                        <p>
-                                            {item.medicalRecord?.chiefComplaint ||
-                                                item.appointment.diagnosis ||
-                                                'Chưa có ghi chú khám.'}
-                                        </p>
-
-                                        <div className={styles.caseMeta}>
-                                            <span>
-                                                Bệnh án:{' '}
-                                                <b>{item.medicalRecord?.status || 'Chưa tạo'}</b>
-                                            </span>
-                                            <span>
-                                                Đơn thuốc:{' '}
-                                                <b>{item.prescription?.status || 'Chưa có'}</b>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className={styles.caseAction}>
-                                        {item.prescription ? (
-                                            <Button
-                                                type="primary"
-                                                loading={checkingId === item.prescription.id}
-                                                onClick={() => handleSafetyCheck(item.prescription!.id)}
-                                            >
-                                                Chạy AI safety
-                                            </Button>
-                                        ) : (
-                                            <Button disabled>Chưa có đơn thuốc</Button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {item.prescription?.safetyAlerts?.length ? (
-                                    <div className={styles.alertStrip}>
-                                        {item.prescription.safetyAlerts.map((alert) => (
-                                            <Tag
-                                                key={alert.id}
-                                                color={
-                                                    alert.severity === 'CRITICAL' ||
-                                                        alert.severity === 'HIGH'
-                                                        ? 'red'
-                                                        : 'gold'
-                                                }
-                                            >
-                                                {alert.type}: {alert.title || alert.severity}
-                                            </Tag>
-                                        ))}
-                                    </div>
-                                ) : null}
-                            </List.Item>
-                        )}
+                <Card className={styles.metricCard}>
+                    <Statistic
+                        title="Hồ sơ cần xử lý"
+                        value={pendingMedicalRecords.length}
+                        prefix={<FileProtectOutlined />}
                     />
-                )}
+                    <p>Ca khám chưa hoàn tất bệnh án.</p>
+                </Card>
+
+                <Card className={styles.metricCard}>
+                    <Statistic
+                        title="Đơn thuốc"
+                        value={prescriptionCount}
+                        prefix={<MedicineBoxOutlined />}
+                    />
+                    <p>Đơn thuốc đã được tạo.</p>
+                </Card>
+
+                <Card className={styles.metricCard}>
+                    <Statistic
+                        title="AI lâm sàng"
+                        value={aiHealth?.status === 'UP' ? 'Sẵn sàng' : 'Gián đoạn'}
+                        prefix={<RobotOutlined />}
+                    />
+                    <p>Hỗ trợ kiểm tra an toàn điều trị.</p>
+                </Card>
+            </section>
+
+            <section className={styles.detailGrid} style={{ marginTop: 24 }}>
+                <Card
+                    className={styles.detailCard}
+                    title="Ca khám cần chú ý"
+                    extra={
+                        <Link href="/dashboard/doctor/cases">
+                            <Button type="link">Xem ca khám</Button>
+                        </Link>
+                    }
+                >
+                    {cases.length === 0 ? (
+                        <ClinicalEmptyState
+                            title="Chưa có lịch khám"
+                            description="Khi có lịch khám được phân công, các ca cần xử lý sẽ hiển thị tại đây."
+                        />
+                    ) : (
+                        <List
+                            dataSource={cases.slice(0, 6)}
+                            renderItem={(item) => (
+                                <List.Item className={styles.cleanListItem}>
+                                    <List.Item.Meta
+                                        title={
+                                            <div className={styles.listTitle}>
+                                                <strong>
+                                                    {item.appointment.patientName ||
+                                                        'Bệnh nhân'}
+                                                </strong>
+
+                                                <Space wrap>
+                                                    <Tag color="blue">
+                                                        {item.appointment.status}
+                                                    </Tag>
+
+                                                    <Tag
+                                                        color={
+                                                            item.medicalRecord
+                                                                ? 'green'
+                                                                : 'orange'
+                                                        }
+                                                    >
+                                                        {item.medicalRecord
+                                                            ? 'Có bệnh án'
+                                                            : 'Chưa có bệnh án'}
+                                                    </Tag>
+                                                </Space>
+                                            </div>
+                                        }
+                                        description={
+                                            <>
+                                                {formatDateTime(
+                                                    item.appointment.startTime,
+                                                )}
+                                                {' · '}
+                                                {item.medicalRecord
+                                                    ?.chiefComplaint ||
+                                                    item.appointment.diagnosis ||
+                                                    'Chưa có ghi chú khám.'}
+                                            </>
+                                        }
+                                    />
+
+                                    <Link
+                                        href={`/dashboard/doctor/cases/${item.appointment.id}`}
+                                    >
+                                        <Button type="primary" ghost>
+                                            Mở ca khám
+                                        </Button>
+                                    </Link>
+                                </List.Item>
+                            )}
+                        />
+                    )}
+                </Card>
+
+                <Card
+                    className={styles.detailCard}
+                    title="An toàn đơn thuốc"
+                    extra={
+                        <Tag color={alertCount > 0 ? 'red' : 'green'}>
+                            {alertCount} cảnh báo
+                        </Tag>
+                    }
+                >
+                    {cases.filter((item) => item.prescription).length === 0 ? (
+                        <p className={styles.mutedText}>
+                            Chưa có đơn thuốc nào cần kiểm tra.
+                        </p>
+                    ) : (
+                        <List
+                            dataSource={cases
+                                .filter((item) => item.prescription)
+                                .slice(0, 5)}
+                            renderItem={(item) => (
+                                <List.Item className={styles.cleanListItem}>
+                                    <List.Item.Meta
+                                        title={
+                                            <div className={styles.listTitle}>
+                                                <strong>
+                                                    {item.appointment.patientName ||
+                                                        'Bệnh nhân'}
+                                                </strong>
+
+                                                <Tag
+                                                    color={
+                                                        item.prescription
+                                                            ?.safetyAlerts
+                                                            ?.length
+                                                            ? 'red'
+                                                            : 'green'
+                                                    }
+                                                >
+                                                    {item.prescription
+                                                        ?.safetyAlerts?.length ||
+                                                        0}{' '}
+                                                    cảnh báo
+                                                </Tag>
+                                            </div>
+                                        }
+                                        description={
+                                            <>
+                                                Trạng thái đơn thuốc:{' '}
+                                                <b>
+                                                    {
+                                                        item.prescription
+                                                            ?.status
+                                                    }
+                                                </b>
+                                            </>
+                                        }
+                                    />
+
+                                    {item.prescription && (
+                                        <Button
+                                            type="primary"
+                                            loading={
+                                                checkingId ===
+                                                item.prescription.id
+                                            }
+                                            onClick={() =>
+                                                handleSafetyCheck(
+                                                    item.prescription!.id,
+                                                )
+                                            }
+                                        >
+                                            Kiểm tra
+                                        </Button>
+                                    )}
+                                </List.Item>
+                            )}
+                        />
+                    )}
+                </Card>
             </section>
         </div>
     );
