@@ -1,64 +1,62 @@
 export type AdminUserStatus =
-    | 'PENDING_ACTIVATION'
     | 'ACTIVE'
-    | 'LOCKED'
-    | 'DISABLED';
+    | 'DISABLED'
+    | 'PENDING_ACTIVATION'
+    | 'INACTIVE';
 
-export type AdminUserRoleCode =
-    | 'ALL'
-    | 'ADMIN'
-    | 'DOCTOR'
-    | 'RECEPTIONIST'
-    | 'PATIENT';
-
-export type AdminStaffRoleCode = 'DOCTOR' | 'RECEPTIONIST';
+export type AdminUserRole = {
+    id?: string;
+    code: string;
+    name?: string;
+};
 
 export type AdminUser = {
     id: string;
     email: string;
-    status: AdminUserStatus;
-    lastLoginAt?: string;
-
     fullName?: string;
-    dateOfBirth?: string;
-    gender?: string;
     phoneNumber?: string;
+    gender?: string;
+    dateOfBirth?: string;
     address?: string;
 
-    roles: string[];
-    permissions: string[];
+    status: AdminUserStatus | string;
+    roles?: AdminUserRole[];
+    primaryRole?: string;
 
-    doctorProfileId?: string;
-    specialtyId?: string;
+    createdAt?: string;
+    lastLoginAt?: string;
+
     specialtyName?: string;
     licenseNumber?: string;
     degree?: string;
     experienceYears?: number;
+
     bio?: string;
 };
 
-export type AdminCreateStaffPayload = {
+export type AdminUserFilter = {
+    keyword?: string;
+    status?: string;
+    role?: string;
+    specialtyId?: string;
+    page?: number;
+    size?: number;
+};
+
+export type AdminCreateUserPayload = {
     email: string;
     password: string;
     fullName: string;
-
-    dateOfBirth?: string;
-    gender?: string;
     phoneNumber?: string;
-    address?: string;
-
-    roleCode: AdminStaffRoleCode;
-
-    specialtyId?: string;
-    licenseNumber?: string;
-    degree?: string;
-    experienceYears?: number;
-    bio?: string;
+    roleCodes: string[];
 };
 
 export type AdminUpdateUserStatusPayload = {
-    status: AdminUserStatus;
-    reason?: string;
+    status: string;
+};
+
+export type AdminUpdateUserRolesPayload = {
+    roleCodes: string[];
 };
 
 export type AdminUpdateDoctorProfilePayload = {

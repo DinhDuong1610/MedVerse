@@ -1,56 +1,70 @@
 'use client';
 
 import {
+    CheckCircleOutlined,
+    EditOutlined,
+    EyeOutlined,
+    LockOutlined,
+    PlusOutlined,
+    ReloadOutlined,
+    SearchOutlined,
+    StopOutlined,
+    TeamOutlined,
+    UserOutlined,
+} from '@ant-design/icons';
+import {
     Alert,
     Button,
     Card,
+    Descriptions,
     Drawer,
     Form,
     Input,
     InputNumber,
-    List,
     Modal,
     Select,
+    Skeleton,
     Space,
     Statistic,
+    Table,
     Tag,
     message,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
-import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
-import ClinicalPageState from '../../_components/ClinicalPageState';
 import DashboardFrame from '../../_components/DashboardFrame';
 import RoleGuardState from '../../_components/RoleGuardState';
 import StatusTag from '../../_components/StatusTag';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
+import { getRoleLabel } from '@/lib/auth/roles';
 import {
-    createAdminStaff,
-    getAdminUserById,
+    createAdminUser,
     getAdminUsers,
     updateAdminDoctorProfile,
+    updateAdminUserRoles,
     updateAdminUserStatus,
 } from '@/services/admin-user.service';
-import { getDirectorySpecialties } from '@/services/directory.service';
 import type {
-    AdminCreateStaffPayload,
-    AdminStaffRoleCode,
+    AdminCreateUserPayload,
+    AdminUpdateDoctorProfilePayload,
     AdminUser,
-    AdminUserRoleCode,
-    AdminUserStatus,
+    AdminUserFilter,
 } from '@/types/admin-user';
-import type { DirectorySpecialty } from '@/types/clinical';
 import styles from '../../dashboard.module.scss';
 
-type CreateStaffFormValues = {
+type UserFormValues = {
     email: string;
     password: string;
     fullName: string;
-    gender?: string;
     phoneNumber?: string;
-    address?: string;
+    roleCodes: string[];
+};
 
-    roleCode: AdminStaffRoleCode;
+type RoleEditValues = {
+    roleCodes: string[];
+};
 
+type DoctorProfileValues = {
     specialtyId?: string;
     licenseNumber?: string;
     degree?: string;
@@ -58,119 +72,85 @@ type CreateStaffFormValues = {
     bio?: string;
 };
 
-type DoctorProfileFormValues = {
-    specialtyId?: string;
-    licenseNumber?: string;
-    degree?: string;
-    experienceYears?: number;
-    bio?: string;
-};
+const roleOptions = [
+    { label: 'Quản trị viên', value: 'ADMIN' },
+    { label: 'Bác sĩ', value: 'DOCTOR' },
+    { label: 'Lễ tân', value: 'RECEPTIONIST' },
+    { label: 'Bệnh nhân', value: 'PATIENT' },
+];
 
-const roleFilterOptions: Array<{
-    value: AdminUserRoleCode;
-    label: string;
-}> = [
-        { value: 'ALL', label: 'Tất cả' },
-        { value: 'ADMIN', label: 'ADMIN' },
-        { value: 'DOCTOR', label: 'DOCTOR' },
-        { value: 'RECEPTIONIST', label: 'RECEPTIONIST' },
-        { value: 'PATIENT', label: 'PATIENT' },
-    ];
+const statusOptions = [
+    { label: 'Tất cả trạng thái', value: 'ALL' },
+    { label: 'Đang hoạt động', value: 'ACTIVE' },
+    { label: 'Chờ kích hoạt', value: 'PENDING_ACTIVATION' },
+    { label: 'Đã vô hiệu hóa', value: 'DISABLED' },
+];
 
-const staffRoleOptions: Array<{
-    value: AdminStaffRoleCode;
-    label: string;
-}> = [
-        { value: 'DOCTOR', label: 'Bác sĩ' },
-        { value: 'RECEPTIONIST', label: 'Lễ tân' },
-    ];
+const roleFilterOptions = [
+    { label: 'Tất cả vai trò', value: 'ALL' },
+    ...roleOptions,
+];
+
+function getPrimaryRole(user: AdminUser) {
+    return user.primaryRole || user.roles?.[0]?.code || 'PATIENT';
+}
+
+function getRoleCodes(user: AdminUser) {
+    if (user.roles?.length) {
+        return user.roles.map((role) => role.code);
+    }
+
+    return [getPrimaryRole(user)];
+}
 
 function formatDateTime(value?: string) {
-    if (!value) return 'Chưa đăng nhập';
+    if (!value) return 'Chưa ghi nhận';
 
     return new Date(value).toLocaleString('vi-VN');
 }
 
-function getPrimaryRole(user: AdminUser) {
-    return user.roles?.[0] || 'UNKNOWN';
+function getDisplayName(user: AdminUser) {
+    return user.fullName || user.email;
 }
 
-function getStatusActionLabel(status: AdminUserStatus) {
-    if (status === 'ACTIVE') {
-        return 'Khóa tài khoản';
-    }
+function isDoctor(user?: AdminUser | null) {
+    if (!user) return false;
 
-    if (status === 'LOCKED' || status === 'DISABLED') {
-        return 'Kích hoạt lại';
-    }
-
-    return 'Kích hoạt';
-}
-
-function getNextStatus(status: AdminUserStatus): AdminUserStatus {
-    if (status === 'ACTIVE') {
-        return 'LOCKED';
-    }
-
-    return 'ACTIVE';
-}
-
-function normalizeStaffPayload(
-    values: CreateStaffFormValues,
-): AdminCreateStaffPayload {
-    const payload: AdminCreateStaffPayload = {
-        email: values.email.trim(),
-        password: values.password,
-        fullName: values.fullName.trim(),
-        gender: values.gender,
-        phoneNumber: values.phoneNumber?.trim() || undefined,
-        address: values.address?.trim() || undefined,
-        roleCode: values.roleCode,
-    };
-
-    if (values.roleCode === 'DOCTOR') {
-        payload.specialtyId = values.specialtyId;
-        payload.licenseNumber = values.licenseNumber?.trim() || undefined;
-        payload.degree = values.degree?.trim() || undefined;
-        payload.experienceYears = values.experienceYears;
-        payload.bio = values.bio?.trim() || undefined;
-    }
-
-    return payload;
+    return getRoleCodes(user).includes('DOCTOR');
 }
 
 export default function AdminUsersPage() {
     const { session, loading: authLoading } = useAuthSession();
 
-    const [form] = Form.useForm<CreateStaffFormValues>();
-    const [doctorProfileForm] = Form.useForm<DoctorProfileFormValues>();
-    const roleCodeWatch = Form.useWatch('roleCode', form);
-
     const [users, setUsers] = useState<AdminUser[]>([]);
-    const [specialties, setSpecialties] = useState<DirectorySpecialty[]>([]);
-    const [roleCode, setRoleCode] = useState<AdminUserRoleCode>('ALL');
+    const [filter, setFilter] = useState<AdminUserFilter>({
+        page: 0,
+        size: 20,
+        status: 'ALL',
+        role: 'ALL',
+    });
 
     const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const [createOpen, setCreateOpen] = useState(false);
-    const [detailOpen, setDetailOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-    const [detailLoading, setDetailLoading] = useState(false);
 
-    const [doctorProfileOpen, setDoctorProfileOpen] = useState(false);
-    const [updatingDoctorProfile, setUpdatingDoctorProfile] = useState(false);
+    const [openDetailDrawer, setOpenDetailDrawer] = useState(false);
+    const [openCreateModal, setOpenCreateModal] = useState(false);
+    const [openRoleModal, setOpenRoleModal] = useState(false);
+    const [openDoctorProfileModal, setOpenDoctorProfileModal] = useState(false);
 
-    const loadUsers = async (nextRole = roleCode) => {
+    const [createForm] = Form.useForm<UserFormValues>();
+    const [roleForm] = Form.useForm<RoleEditValues>();
+    const [doctorProfileForm] = Form.useForm<DoctorProfileValues>();
+
+    const loadUsers = async (nextFilter = filter) => {
         try {
             setLoading(true);
             setError(null);
 
-            const page = await getAdminUsers({
-                roleCode: nextRole,
-                size: 100,
-            });
+            const page = await getAdminUsers(nextFilter);
 
             setUsers(page.content || []);
         } catch (err) {
@@ -184,148 +164,153 @@ export default function AdminUsersPage() {
         }
     };
 
-    const loadSpecialties = async () => {
-        try {
-            const data = await getDirectorySpecialties();
-            setSpecialties(data);
-        } catch {
-            setSpecialties([]);
-        }
-    };
-
     useEffect(() => {
         if (!session) return;
 
-        if (session.role !== 'ADMIN' && session.primaryRole !== 'ADMIN') {
-            setLoading(false);
-            return;
-        }
-
         loadUsers();
-        loadSpecialties();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
     const metrics = useMemo(() => {
         const active = users.filter((item) => item.status === 'ACTIVE').length;
-
-        const locked = users.filter((item) => item.status === 'LOCKED').length;
-
-        const disabled = users.filter(
-            (item) => item.status === 'DISABLED',
+        const pending = users.filter(
+            (item) => item.status === 'PENDING_ACTIVATION',
         ).length;
-
-        const doctors = users.filter((item) =>
-            item.roles?.includes('DOCTOR'),
-        ).length;
-
-        const receptionists = users.filter((item) =>
-            item.roles?.includes('RECEPTIONIST'),
+        const disabled = users.filter((item) => item.status === 'DISABLED').length;
+        const staff = users.filter((item) =>
+            ['ADMIN', 'DOCTOR', 'RECEPTIONIST'].includes(getPrimaryRole(item)),
         ).length;
 
         return {
             total: users.length,
             active,
-            locked,
+            pending,
             disabled,
-            doctors,
-            receptionists,
+            staff,
         };
     }, [users]);
 
-    const isCurrentSessionUser = (user: AdminUser) => {
-        return session?.userId === user.id;
+    const handleSearch = () => {
+        const nextFilter = {
+            ...filter,
+            page: 0,
+        };
+
+        setFilter(nextFilter);
+        loadUsers(nextFilter);
     };
 
-    const handleRoleFilterChange = (value: AdminUserRoleCode) => {
-        setRoleCode(value);
-        loadUsers(value);
+    const handleReset = () => {
+        const nextFilter: AdminUserFilter = {
+            page: 0,
+            size: 20,
+            status: 'ALL',
+            role: 'ALL',
+            keyword: '',
+        };
+
+        setFilter(nextFilter);
+        loadUsers(nextFilter);
     };
 
-    const handleCreateStaff = async (values: CreateStaffFormValues) => {
+    const openDetail = (user: AdminUser) => {
+        setSelectedUser(user);
+        setOpenDetailDrawer(true);
+    };
+
+    const openEditRoles = (user: AdminUser) => {
+        setSelectedUser(user);
+        roleForm.setFieldsValue({
+            roleCodes: getRoleCodes(user),
+        });
+        setOpenRoleModal(true);
+    };
+
+    const openEditDoctorProfile = (user: AdminUser) => {
+        setSelectedUser(user);
+        doctorProfileForm.setFieldsValue({
+            specialtyId: user.specialtyId,
+            licenseNumber: user.licenseNumber,
+            degree: user.degree,
+            experienceYears: user.experienceYears,
+            bio: user.bio,
+        });
+        setOpenDoctorProfileModal(true);
+    };
+
+    const handleCreateUser = async (values: UserFormValues) => {
         try {
-            setCreating(true);
+            setSaving(true);
 
-            const created = await createAdminStaff(
-                normalizeStaffPayload(values),
-            );
+            const payload: AdminCreateUserPayload = {
+                email: values.email.trim(),
+                password: values.password,
+                fullName: values.fullName.trim(),
+                phoneNumber: values.phoneNumber?.trim() || undefined,
+                roleCodes: values.roleCodes,
+            };
 
-            message.success(`Đã tạo tài khoản ${created.email}.`);
-            setCreateOpen(false);
-            form.resetFields();
+            await createAdminUser(payload);
 
+            message.success('Đã tạo tài khoản mới.');
+            setOpenCreateModal(false);
+            createForm.resetFields();
             await loadUsers();
         } catch (err) {
             message.error(
                 err instanceof Error
                     ? err.message
-                    : 'Không thể tạo tài khoản nhân sự.',
+                    : 'Không thể tạo tài khoản.',
             );
         } finally {
-            setCreating(false);
+            setSaving(false);
         }
     };
 
-    const openUserDetail = async (user: AdminUser) => {
-        try {
-            setSelectedUser(user);
-            setDetailOpen(true);
-            setDetailLoading(true);
+    const handleUpdateRoles = async (values: RoleEditValues) => {
+        if (!selectedUser) return;
 
-            const detail = await getAdminUserById(user.id);
-            setSelectedUser(detail);
+        try {
+            setSaving(true);
+
+            await updateAdminUserRoles(selectedUser.id, {
+                roleCodes: values.roleCodes,
+            });
+
+            message.success('Đã cập nhật vai trò người dùng.');
+            setOpenRoleModal(false);
+            setSelectedUser(null);
+            await loadUsers();
         } catch (err) {
             message.error(
                 err instanceof Error
                     ? err.message
-                    : 'Không thể tải chi tiết tài khoản.',
+                    : 'Không thể cập nhật vai trò.',
             );
         } finally {
-            setDetailLoading(false);
+            setSaving(false);
         }
     };
 
-    const openDoctorProfileEditor = (user: AdminUser) => {
-        if (!user.roles?.includes('DOCTOR')) {
-            message.warning('Chỉ tài khoản bác sĩ mới có hồ sơ bác sĩ.');
-            return;
-        }
-
-        setSelectedUser(user);
-
-        doctorProfileForm.setFieldsValue({
-            specialtyId: user.specialtyId,
-            licenseNumber: user.licenseNumber || '',
-            degree: user.degree || '',
-            experienceYears: user.experienceYears,
-            bio: user.bio || '',
-        });
-
-        setDoctorProfileOpen(true);
-    };
-
-    const handleUpdateDoctorProfile = async (
-        values: DoctorProfileFormValues,
-    ) => {
+    const handleUpdateDoctorProfile = async (values: DoctorProfileValues) => {
         if (!selectedUser) return;
 
         try {
-            setUpdatingDoctorProfile(true);
+            setSaving(true);
 
-            const updated = await updateAdminDoctorProfile(selectedUser.id, {
-                specialtyId: values.specialtyId,
+            const payload: AdminUpdateDoctorProfilePayload = {
+                specialtyId: values.specialtyId || undefined,
                 licenseNumber: values.licenseNumber?.trim() || undefined,
                 degree: values.degree?.trim() || undefined,
                 experienceYears: values.experienceYears,
                 bio: values.bio?.trim() || undefined,
-            });
+            };
+
+            await updateAdminDoctorProfile(selectedUser.id, payload);
 
             message.success('Đã cập nhật hồ sơ bác sĩ.');
-
-            setSelectedUser(updated);
-            setDoctorProfileOpen(false);
-            doctorProfileForm.resetFields();
-
+            setOpenDoctorProfileModal(false);
+            setSelectedUser(null);
             await loadUsers();
         } catch (err) {
             message.error(
@@ -334,48 +319,34 @@ export default function AdminUsersPage() {
                     : 'Không thể cập nhật hồ sơ bác sĩ.',
             );
         } finally {
-            setUpdatingDoctorProfile(false);
+            setSaving(false);
         }
     };
 
-    const handleUpdateStatus = async (user: AdminUser) => {
-        if (isCurrentSessionUser(user)) {
-            message.warning(
-                'Bạn không thể tự khóa hoặc đổi trạng thái tài khoản của chính mình.',
-            );
-            return;
-        }
-
-        const nextStatus = getNextStatus(user.status);
-        const actionLabel = getStatusActionLabel(user.status);
+    const handleToggleStatus = async (user: AdminUser) => {
+        const nextStatus = user.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
 
         Modal.confirm({
-            title: `${actionLabel}?`,
+            title:
+                nextStatus === 'DISABLED'
+                    ? 'Vô hiệu hóa tài khoản?'
+                    : 'Kích hoạt tài khoản?',
             content:
-                nextStatus === 'ACTIVE'
-                    ? `Tài khoản ${user.email} sẽ được kích hoạt và có thể đăng nhập lại.`
-                    : `Tài khoản ${user.email} sẽ bị khóa và không thể đăng nhập.`,
-            okText: actionLabel,
+                nextStatus === 'DISABLED'
+                    ? `Tài khoản ${user.email} sẽ không thể đăng nhập cho đến khi được kích hoạt lại.`
+                    : `Tài khoản ${user.email} sẽ được phép đăng nhập lại hệ thống.`,
+            okText: nextStatus === 'DISABLED' ? 'Vô hiệu hóa' : 'Kích hoạt',
             cancelText: 'Đóng',
             okButtonProps: {
-                danger: nextStatus !== 'ACTIVE',
+                danger: nextStatus === 'DISABLED',
             },
             onOk: async () => {
                 try {
-                    const updated = await updateAdminUserStatus(user.id, {
+                    await updateAdminUserStatus(user.id, {
                         status: nextStatus,
-                        reason:
-                            nextStatus === 'ACTIVE'
-                                ? 'Admin reactivated account from user management page.'
-                                : 'Admin locked account from user management page.',
                     });
 
-                    message.success(`Đã cập nhật trạng thái ${updated.email}.`);
-
-                    if (selectedUser?.id === updated.id) {
-                        setSelectedUser(updated);
-                    }
-
+                    message.success('Đã cập nhật trạng thái tài khoản.');
                     await loadUsers();
                 } catch (err) {
                     message.error(
@@ -388,306 +359,395 @@ export default function AdminUsersPage() {
         });
     };
 
-    const handleDisableUser = async (user: AdminUser) => {
-        if (isCurrentSessionUser(user)) {
-            message.warning(
-                'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.',
-            );
-            return;
-        }
+    const columns: ColumnsType<AdminUser> = [
+        {
+            title: 'Người dùng',
+            key: 'user',
+            render: (_, record) => (
+                <Space direction="vertical" size={2}>
+                    <strong>{getDisplayName(record)}</strong>
+                    <span className={styles.mutedText}>{record.email}</span>
+                </Space>
+            ),
+        },
+        {
+            title: 'Vai trò',
+            key: 'role',
+            width: 170,
+            render: (_, record) => (
+                <Space wrap>
+                    {getRoleCodes(record).map((role) => (
+                        <Tag key={role} color="cyan">
+                            {getRoleLabel(role)}
+                        </Tag>
+                    ))}
+                </Space>
+            ),
+        },
+        {
+            title: 'Trạng thái',
+            dataIndex: 'status',
+            width: 160,
+            render: (status) => <StatusTag value={status} />,
+        },
+        {
+            title: 'Liên hệ',
+            key: 'contact',
+            render: (_, record) => (
+                <Space direction="vertical" size={2}>
+                    <span>{record.phoneNumber || 'Chưa có SĐT'}</span>
+                    <span className={styles.mutedText}>
+                        {record.address || 'Chưa cập nhật địa chỉ'}
+                    </span>
+                </Space>
+            ),
+        },
+        {
+            title: 'Đăng nhập gần nhất',
+            dataIndex: 'lastLoginAt',
+            width: 190,
+            render: (value) => formatDateTime(value),
+        },
+        {
+            title: 'Thao tác',
+            key: 'actions',
+            width: 260,
+            fixed: 'right',
+            render: (_, record) => (
+                <Space wrap>
+                    <Button
+                        size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => openDetail(record)}
+                    >
+                        Chi tiết
+                    </Button>
 
-        Modal.confirm({
-            title: 'Vô hiệu hóa tài khoản?',
-            content: `Tài khoản ${user.email} sẽ chuyển sang DISABLED và không thể đăng nhập.`,
-            okText: 'Vô hiệu hóa',
-            cancelText: 'Đóng',
-            okButtonProps: {
-                danger: true,
-            },
-            onOk: async () => {
-                try {
-                    const updated = await updateAdminUserStatus(user.id, {
-                        status: 'DISABLED',
-                        reason:
-                            'Admin disabled account from user management page.',
-                    });
+                    <Button
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => openEditRoles(record)}
+                    >
+                        Vai trò
+                    </Button>
 
-                    message.success(`Đã vô hiệu hóa ${updated.email}.`);
+                    {isDoctor(record) && (
+                        <Button
+                            size="small"
+                            icon={<TeamOutlined />}
+                            onClick={() => openEditDoctorProfile(record)}
+                        >
+                            Bác sĩ
+                        </Button>
+                    )}
 
-                    if (selectedUser?.id === updated.id) {
-                        setSelectedUser(updated);
-                    }
-
-                    await loadUsers();
-                } catch (err) {
-                    message.error(
-                        err instanceof Error
-                            ? err.message
-                            : 'Không thể vô hiệu hóa tài khoản.',
-                    );
-                }
-            },
-        });
-    };
+                    <Button
+                        size="small"
+                        danger={record.status === 'ACTIVE'}
+                        icon={
+                            record.status === 'ACTIVE' ? (
+                                <StopOutlined />
+                            ) : (
+                                <CheckCircleOutlined />
+                            )
+                        }
+                        onClick={() => handleToggleStatus(record)}
+                    >
+                        {record.status === 'ACTIVE' ? 'Khóa' : 'Mở'}
+                    </Button>
+                </Space>
+            ),
+        },
+    ];
 
     if (authLoading || !session) {
-        return <ClinicalPageState loading>Loading</ClinicalPageState>;
+        return <Skeleton active paragraph={{ rows: 8 }} />;
     }
 
     return (
         <DashboardFrame
             session={session}
             title="Quản lý người dùng"
-            subtitle="Tạo tài khoản bác sĩ/lễ tân, theo dõi vai trò, trạng thái và hồ sơ bác sĩ"
+            subtitle="Theo dõi tài khoản, vai trò và trạng thái truy cập hệ thống"
         >
             <RoleGuardState session={session} allow={['ADMIN']}>
-                <section className={styles.metricGrid}>
-                    <Card className={styles.metricCard}>
-                        <Statistic title="Tổng user" value={metrics.total} />
-                    </Card>
-
-                    <Card className={styles.metricCard}>
-                        <Statistic title="Đang hoạt động" value={metrics.active} />
-                    </Card>
-
-                    <Card className={styles.metricCard}>
-                        <Statistic title="Đang khóa" value={metrics.locked} />
-                    </Card>
-
-                    <Card className={styles.metricCard}>
-                        <Statistic title="Vô hiệu hóa" value={metrics.disabled} />
-                    </Card>
-                </section>
-
-                <Card className={styles.detailCard} style={{ marginTop: 24 }}>
-                    <div className={styles.panelHeader}>
-                        <div>
-                            <span>Admin user management</span>
-                            <h2>Danh sách tài khoản</h2>
-                            <p>
-                                Admin quản lý tài khoản, role, permissions,
-                                trạng thái đăng nhập và hồ sơ bác sĩ.
-                            </p>
-                        </div>
-
-                        <Space wrap>
-                            <Select
-                                value={roleCode}
-                                options={roleFilterOptions}
-                                onChange={handleRoleFilterChange}
-                                style={{ width: 180 }}
-                            />
-
-                            <Button onClick={() => loadUsers()}>
-                                Làm mới
-                            </Button>
-
-                            <Button
-                                type="primary"
-                                onClick={() => {
-                                    form.setFieldsValue({
-                                        roleCode: 'DOCTOR',
-                                    });
-                                    setCreateOpen(true);
-                                }}
-                            >
-                                Tạo nhân sự
-                            </Button>
-                        </Space>
-                    </div>
-
+                <div className={styles.roleDashboard}>
                     {error && (
                         <Alert
                             type="error"
                             showIcon
-                            message="Không thể tải danh sách user"
+                            message="Không thể tải người dùng"
                             description={error}
-                            style={{ marginBottom: 16 }}
                         />
                     )}
 
-                    <ClinicalPageState loading={loading}>
-                        {users.length === 0 ? (
-                            <ClinicalEmptyState
-                                title="Chưa có tài khoản"
-                                description="Không tìm thấy user nào theo bộ lọc hiện tại."
+                    <section className={styles.heroCard}>
+                        <div>
+                            <span>Quản trị tài khoản</span>
+                            <h2>Kiểm soát người dùng và quyền truy cập hệ thống.</h2>
+                            <p>
+                                Trang này giúp quản trị viên theo dõi tài khoản,
+                                xem thông tin chi tiết, chỉnh sửa vai trò, cập
+                                nhật hồ sơ bác sĩ và xử lý trạng thái truy cập.
+                            </p>
+                        </div>
+
+                        <div className={styles.pulseCard}>
+                            <strong>{metrics.active}</strong>
+                            <span>tài khoản đang hoạt động</span>
+                        </div>
+                    </section>
+
+                    <section className={styles.metricGrid}>
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Tổng tài khoản"
+                                value={metrics.total}
+                                prefix={<UserOutlined />}
                             />
-                        ) : (
-                            <List
-                                dataSource={users}
-                                renderItem={(user) => (
-                                    <List.Item className={styles.cleanListItem}>
-                                        <List.Item.Meta
-                                            title={
-                                                <div className={styles.listTitle}>
-                                                    <strong>
-                                                        {user.fullName ||
-                                                            user.email}
-                                                    </strong>
+                            <p>Tài khoản trong phạm vi quản trị.</p>
+                        </Card>
 
-                                                    <Space wrap>
-                                                        <StatusTag
-                                                            value={user.status}
-                                                        />
-
-                                                        {user.roles?.map(
-                                                            (role) => (
-                                                                <Tag
-                                                                    key={role}
-                                                                    color="blue"
-                                                                >
-                                                                    {role}
-                                                                </Tag>
-                                                            ),
-                                                        )}
-
-                                                        {isCurrentSessionUser(
-                                                            user,
-                                                        ) && (
-                                                                <Tag color="cyan">
-                                                                    Chính bạn
-                                                                </Tag>
-                                                            )}
-                                                    </Space>
-                                                </div>
-                                            }
-                                            description={
-                                                <div>
-                                                    <p>
-                                                        Email:{' '}
-                                                        <b>{user.email}</b>
-                                                    </p>
-
-                                                    <p>
-                                                        Vai trò chính:{' '}
-                                                        <b>
-                                                            {getPrimaryRole(user)}
-                                                        </b>
-                                                    </p>
-
-                                                    <p>
-                                                        Số điện thoại:{' '}
-                                                        {user.phoneNumber ||
-                                                            'Chưa cập nhật'}
-                                                    </p>
-
-                                                    <p>
-                                                        Đăng nhập lần cuối:{' '}
-                                                        {formatDateTime(
-                                                            user.lastLoginAt,
-                                                        )}
-                                                    </p>
-
-                                                    {user.roles?.includes(
-                                                        'DOCTOR',
-                                                    ) && (
-                                                            <p>
-                                                                Chuyên khoa:{' '}
-                                                                <b>
-                                                                    {user.specialtyName ||
-                                                                        'Chưa gán'}
-                                                                </b>{' '}
-                                                                · Học vị:{' '}
-                                                                <b>
-                                                                    {user.degree ||
-                                                                        'Chưa cập nhật'}
-                                                                </b>{' '}
-                                                                · Kinh nghiệm:{' '}
-                                                                <b>
-                                                                    {user.experienceYears ||
-                                                                        0}
-                                                                </b>{' '}
-                                                                năm
-                                                            </p>
-                                                        )}
-                                                </div>
-                                            }
-                                        />
-
-                                        <Space wrap>
-                                            <Button
-                                                onClick={() =>
-                                                    openUserDetail(user)
-                                                }
-                                            >
-                                                Chi tiết
-                                            </Button>
-
-                                            {user.roles?.includes('DOCTOR') && (
-                                                <Button
-                                                    onClick={() =>
-                                                        openDoctorProfileEditor(
-                                                            user,
-                                                        )
-                                                    }
-                                                >
-                                                    Sửa hồ sơ bác sĩ
-                                                </Button>
-                                            )}
-
-                                            <Button
-                                                disabled={isCurrentSessionUser(
-                                                    user,
-                                                )}
-                                                onClick={() =>
-                                                    handleUpdateStatus(user)
-                                                }
-                                            >
-                                                {getStatusActionLabel(
-                                                    user.status,
-                                                )}
-                                            </Button>
-
-                                            {user.status !== 'DISABLED' && (
-                                                <Button
-                                                    danger
-                                                    disabled={isCurrentSessionUser(
-                                                        user,
-                                                    )}
-                                                    onClick={() =>
-                                                        handleDisableUser(user)
-                                                    }
-                                                >
-                                                    Vô hiệu hóa
-                                                </Button>
-                                            )}
-                                        </Space>
-                                    </List.Item>
-                                )}
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Đang hoạt động"
+                                value={metrics.active}
+                                prefix={<CheckCircleOutlined />}
                             />
-                        )}
-                    </ClinicalPageState>
-                </Card>
+                            <p>Có thể đăng nhập và sử dụng hệ thống.</p>
+                        </Card>
+
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Chờ kích hoạt"
+                                value={metrics.pending}
+                                prefix={<LockOutlined />}
+                            />
+                            <p>Đã đăng ký nhưng chưa sẵn sàng sử dụng.</p>
+                        </Card>
+
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Nhân sự"
+                                value={metrics.staff}
+                                prefix={<TeamOutlined />}
+                            />
+                            <p>Admin, bác sĩ và lễ tân.</p>
+                        </Card>
+                    </section>
+
+                    <Card
+                        className={styles.detailCard}
+                        title="Danh sách người dùng"
+                        extra={
+                            <Button
+                                type="primary"
+                                icon={<PlusOutlined />}
+                                onClick={() => setOpenCreateModal(true)}
+                            >
+                                Tạo tài khoản
+                            </Button>
+                        }
+                    >
+                        <div className={styles.toolbar}>
+                            <Input
+                                allowClear
+                                prefix={<SearchOutlined />}
+                                placeholder="Tìm theo tên hoặc email"
+                                value={filter.keyword}
+                                onChange={(event) =>
+                                    setFilter((current) => ({
+                                        ...current,
+                                        keyword: event.target.value,
+                                    }))
+                                }
+                                onPressEnter={handleSearch}
+                            />
+
+                            <Select
+                                value={filter.role || 'ALL'}
+                                options={roleFilterOptions}
+                                onChange={(value) =>
+                                    setFilter((current) => ({
+                                        ...current,
+                                        role: value,
+                                    }))
+                                }
+                                style={{ minWidth: 180 }}
+                            />
+
+                            <Select
+                                value={filter.status || 'ALL'}
+                                options={statusOptions}
+                                onChange={(value) =>
+                                    setFilter((current) => ({
+                                        ...current,
+                                        status: value,
+                                    }))
+                                }
+                                style={{ minWidth: 190 }}
+                            />
+
+                            <Button
+                                type="primary"
+                                icon={<SearchOutlined />}
+                                onClick={handleSearch}
+                            >
+                                Lọc
+                            </Button>
+
+                            <Button
+                                icon={<ReloadOutlined />}
+                                onClick={handleReset}
+                            >
+                                Đặt lại
+                            </Button>
+                        </div>
+
+                        <Table
+                            rowKey="id"
+                            loading={loading}
+                            columns={columns}
+                            dataSource={users}
+                            pagination={false}
+                            scroll={{ x: 1180 }}
+                        />
+                    </Card>
+                </div>
 
                 <Drawer
-                    title="Tạo tài khoản nhân sự"
-                    open={createOpen}
-                    width={560}
-                    onClose={() => {
-                        setCreateOpen(false);
-                        form.resetFields();
-                    }}
+                    title="Chi tiết người dùng"
+                    open={openDetailDrawer}
+                    width={620}
+                    onClose={() => setOpenDetailDrawer(false)}
+                    extra={
+                        selectedUser && (
+                            <Space>
+                                <Button
+                                    icon={<EditOutlined />}
+                                    onClick={() => openEditRoles(selectedUser)}
+                                >
+                                    Chỉnh vai trò
+                                </Button>
+
+                                {isDoctor(selectedUser) && (
+                                    <Button
+                                        type="primary"
+                                        icon={<TeamOutlined />}
+                                        onClick={() =>
+                                            openEditDoctorProfile(selectedUser)
+                                        }
+                                    >
+                                        Hồ sơ bác sĩ
+                                    </Button>
+                                )}
+                            </Space>
+                        )
+                    }
+                >
+                    {selectedUser && (
+                        <Space direction="vertical" size={20} style={{ width: '100%' }}>
+                            <Descriptions
+                                bordered
+                                column={1}
+                                size="small"
+                                title="Thông tin tài khoản"
+                            >
+                                <Descriptions.Item label="Họ tên">
+                                    {selectedUser.fullName || 'Chưa cập nhật'}
+                                </Descriptions.Item>
+
+                                <Descriptions.Item label="Email">
+                                    {selectedUser.email}
+                                </Descriptions.Item>
+
+                                <Descriptions.Item label="Số điện thoại">
+                                    {selectedUser.phoneNumber || 'Chưa cập nhật'}
+                                </Descriptions.Item>
+
+                                <Descriptions.Item label="Địa chỉ">
+                                    {selectedUser.address || 'Chưa cập nhật'}
+                                </Descriptions.Item>
+
+                                <Descriptions.Item label="Trạng thái">
+                                    <StatusTag value={selectedUser.status} />
+                                </Descriptions.Item>
+
+                                <Descriptions.Item label="Vai trò">
+                                    <Space wrap>
+                                        {getRoleCodes(selectedUser).map((role) => (
+                                            <Tag key={role} color="cyan">
+                                                {getRoleLabel(role)}
+                                            </Tag>
+                                        ))}
+                                    </Space>
+                                </Descriptions.Item>
+
+                                <Descriptions.Item label="Đăng nhập gần nhất">
+                                    {formatDateTime(selectedUser.lastLoginAt)}
+                                </Descriptions.Item>
+                            </Descriptions>
+
+                            {isDoctor(selectedUser) && (
+                                <Descriptions
+                                    bordered
+                                    column={1}
+                                    size="small"
+                                    title="Hồ sơ bác sĩ"
+                                >
+                                    <Descriptions.Item label="Chuyên khoa">
+                                        {selectedUser.specialtyName ||
+                                            'Chưa cập nhật'}
+                                    </Descriptions.Item>
+
+                                    <Descriptions.Item label="Mã giấy phép">
+                                        {selectedUser.licenseNumber ||
+                                            'Chưa cập nhật'}
+                                    </Descriptions.Item>
+
+                                    <Descriptions.Item label="Học vị">
+                                        {selectedUser.degree || 'Chưa cập nhật'}
+                                    </Descriptions.Item>
+
+                                    <Descriptions.Item label="Kinh nghiệm">
+                                        {selectedUser.experienceYears != null
+                                            ? `${selectedUser.experienceYears} năm`
+                                            : 'Chưa cập nhật'}
+                                    </Descriptions.Item>
+
+                                    <Descriptions.Item label="Giới thiệu">
+                                        {selectedUser.bio || 'Chưa cập nhật'}
+                                    </Descriptions.Item>
+                                </Descriptions>
+                            )}
+                        </Space>
+                    )}
+                </Drawer>
+
+                <Modal
+                    title="Tạo tài khoản mới"
+                    open={openCreateModal}
+                    onCancel={() => setOpenCreateModal(false)}
+                    footer={null}
                     destroyOnClose
                 >
                     <Form
-                        form={form}
+                        form={createForm}
                         layout="vertical"
-                        onFinish={handleCreateStaff}
-                        initialValues={{
-                            roleCode: 'DOCTOR',
-                        }}
+                        onFinish={handleCreateUser}
+                        requiredMark={false}
                     >
                         <Form.Item
-                            label="Vai trò"
-                            name="roleCode"
+                            label="Họ và tên"
+                            name="fullName"
                             rules={[
                                 {
                                     required: true,
-                                    message: 'Chọn vai trò',
+                                    message: 'Vui lòng nhập họ và tên.',
                                 },
                             ]}
                         >
-                            <Select options={staffRoleOptions} />
+                            <Input placeholder="Nguyễn Văn A" />
                         </Form.Item>
 
                         <Form.Item
@@ -696,15 +756,15 @@ export default function AdminUsersPage() {
                             rules={[
                                 {
                                     required: true,
-                                    message: 'Nhập email',
+                                    message: 'Vui lòng nhập email.',
                                 },
                                 {
                                     type: 'email',
-                                    message: 'Email không hợp lệ',
+                                    message: 'Email không hợp lệ.',
                                 },
                             ]}
                         >
-                            <Input placeholder="doctor.new@medverse.vn" />
+                            <Input placeholder="name@medverse.vn" />
                         </Form.Item>
 
                         <Form.Item
@@ -713,356 +773,155 @@ export default function AdminUsersPage() {
                             rules={[
                                 {
                                     required: true,
-                                    message: 'Nhập mật khẩu',
+                                    message: 'Vui lòng nhập mật khẩu.',
                                 },
                                 {
                                     min: 8,
-                                    message: 'Mật khẩu tối thiểu 8 ký tự',
+                                    message: 'Mật khẩu tối thiểu 8 ký tự.',
                                 },
                             ]}
                         >
-                            <Input.Password placeholder="Doctor@123456" />
-                        </Form.Item>
-
-                        <Form.Item
-                            label="Họ tên"
-                            name="fullName"
-                            rules={[
-                                {
-                                    required: true,
-                                    message: 'Nhập họ tên',
-                                },
-                            ]}
-                        >
-                            <Input placeholder="Nguyễn Văn A" />
-                        </Form.Item>
-
-                        <Form.Item label="Giới tính" name="gender">
-                            <Select
-                                allowClear
-                                options={[
-                                    { value: 'MALE', label: 'Nam' },
-                                    { value: 'FEMALE', label: 'Nữ' },
-                                    { value: 'OTHER', label: 'Khác' },
-                                ]}
-                            />
+                            <Input.Password placeholder="Tối thiểu 8 ký tự" />
                         </Form.Item>
 
                         <Form.Item label="Số điện thoại" name="phoneNumber">
-                            <Input placeholder="0900000000" />
+                            <Input placeholder="0987654321" />
                         </Form.Item>
 
-                        <Form.Item label="Địa chỉ" name="address">
-                            <Input.TextArea rows={2} />
+                        <Form.Item
+                            label="Vai trò"
+                            name="roleCodes"
+                            rules={[
+                                {
+                                    required: true,
+                                    message:
+                                        'Vui lòng chọn ít nhất một vai trò.',
+                                },
+                            ]}
+                        >
+                            <Select
+                                mode="multiple"
+                                placeholder="Chọn vai trò"
+                                options={roleOptions}
+                            />
                         </Form.Item>
-
-                        {roleCodeWatch === 'DOCTOR' && (
-                            <>
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    message="Thông tin hồ sơ bác sĩ"
-                                    description="Các trường này sẽ được lưu vào DoctorProfile để hiển thị ở danh bạ bác sĩ và booking."
-                                    style={{ marginBottom: 16 }}
-                                />
-
-                                <Form.Item label="Chuyên khoa" name="specialtyId">
-                                    <Select
-                                        allowClear
-                                        showSearch
-                                        placeholder="Chọn chuyên khoa"
-                                        optionFilterProp="label"
-                                        options={specialties.map((item) => ({
-                                            value: item.id,
-                                            label: item.name,
-                                        }))}
-                                    />
-                                </Form.Item>
-
-                                <Form.Item
-                                    label="Số giấy phép"
-                                    name="licenseNumber"
-                                >
-                                    <Input placeholder="VN-DR-001" />
-                                </Form.Item>
-
-                                <Form.Item label="Học vị" name="degree">
-                                    <Input placeholder="BS.CKI, ThS, TS..." />
-                                </Form.Item>
-
-                                <Form.Item
-                                    label="Số năm kinh nghiệm"
-                                    name="experienceYears"
-                                >
-                                    <InputNumber
-                                        min={0}
-                                        style={{ width: '100%' }}
-                                    />
-                                </Form.Item>
-
-                                <Form.Item label="Giới thiệu" name="bio">
-                                    <Input.TextArea rows={4} />
-                                </Form.Item>
-                            </>
-                        )}
 
                         <Button
                             type="primary"
                             htmlType="submit"
-                            loading={creating}
+                            loading={saving}
                             block
                         >
                             Tạo tài khoản
                         </Button>
                     </Form>
-                </Drawer>
+                </Modal>
 
-                <Drawer
-                    title="Chi tiết tài khoản"
-                    open={detailOpen}
-                    width={560}
-                    onClose={() => {
-                        setDetailOpen(false);
-                        setSelectedUser(null);
-                    }}
+                <Modal
+                    title="Chỉnh sửa vai trò"
+                    open={openRoleModal}
+                    onCancel={() => setOpenRoleModal(false)}
+                    footer={null}
                     destroyOnClose
                 >
-                    <ClinicalPageState loading={detailLoading}>
-                        {selectedUser && (
-                            <div>
-                                <h2>
-                                    {selectedUser.fullName ||
-                                        selectedUser.email}
-                                </h2>
+                    <Form
+                        form={roleForm}
+                        layout="vertical"
+                        onFinish={handleUpdateRoles}
+                        requiredMark={false}
+                    >
+                        <Form.Item
+                            label="Người dùng"
+                        >
+                            <Input
+                                value={selectedUser?.email}
+                                disabled
+                            />
+                        </Form.Item>
 
-                                <p>
-                                    Email: <b>{selectedUser.email}</b>
-                                </p>
+                        <Form.Item
+                            label="Vai trò"
+                            name="roleCodes"
+                            rules={[
+                                {
+                                    required: true,
+                                    message:
+                                        'Vui lòng chọn ít nhất một vai trò.',
+                                },
+                            ]}
+                        >
+                            <Select
+                                mode="multiple"
+                                placeholder="Chọn vai trò"
+                                options={roleOptions}
+                            />
+                        </Form.Item>
 
-                                <p>
-                                    Trạng thái:{' '}
-                                    <StatusTag value={selectedUser.status} />
-                                </p>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={saving}
+                            block
+                        >
+                            Lưu vai trò
+                        </Button>
+                    </Form>
+                </Modal>
 
-                                <Space wrap style={{ marginBottom: 16 }}>
-                                    <Button
-                                        disabled={isCurrentSessionUser(
-                                            selectedUser,
-                                        )}
-                                        onClick={() =>
-                                            handleUpdateStatus(selectedUser)
-                                        }
-                                    >
-                                        {getStatusActionLabel(
-                                            selectedUser.status,
-                                        )}
-                                    </Button>
-
-                                    {selectedUser.status !== 'DISABLED' && (
-                                        <Button
-                                            danger
-                                            disabled={isCurrentSessionUser(
-                                                selectedUser,
-                                            )}
-                                            onClick={() =>
-                                                handleDisableUser(selectedUser)
-                                            }
-                                        >
-                                            Vô hiệu hóa
-                                        </Button>
-                                    )}
-                                </Space>
-
-                                {isCurrentSessionUser(selectedUser) && (
-                                    <Alert
-                                        type="info"
-                                        showIcon
-                                        message="Đây là tài khoản đang đăng nhập"
-                                        description="Để tránh tự khóa tài khoản quản trị, hệ thống không cho phép bạn đổi trạng thái tài khoản của chính mình."
-                                        style={{ marginBottom: 16 }}
-                                    />
-                                )}
-
-                                <p>
-                                    Đăng nhập cuối:{' '}
-                                    {formatDateTime(selectedUser.lastLoginAt)}
-                                </p>
-
-                                <h3>Vai trò</h3>
-                                <Space wrap>
-                                    {selectedUser.roles?.map((role) => (
-                                        <Tag key={role} color="blue">
-                                            {role}
-                                        </Tag>
-                                    ))}
-                                </Space>
-
-                                <h3 style={{ marginTop: 20 }}>
-                                    Thông tin cá nhân
-                                </h3>
-
-                                <p>
-                                    SĐT:{' '}
-                                    {selectedUser.phoneNumber ||
-                                        'Chưa cập nhật'}
-                                </p>
-
-                                <p>
-                                    Giới tính:{' '}
-                                    {selectedUser.gender || 'Chưa cập nhật'}
-                                </p>
-
-                                <p>
-                                    Địa chỉ:{' '}
-                                    {selectedUser.address || 'Chưa cập nhật'}
-                                </p>
-
-                                {selectedUser.roles?.includes('DOCTOR') && (
-                                    <>
-                                        <h3 style={{ marginTop: 20 }}>
-                                            Hồ sơ bác sĩ
-                                        </h3>
-
-                                        <Button
-                                            type="primary"
-                                            ghost
-                                            onClick={() =>
-                                                openDoctorProfileEditor(
-                                                    selectedUser,
-                                                )
-                                            }
-                                            style={{ marginBottom: 12 }}
-                                        >
-                                            Sửa hồ sơ bác sĩ
-                                        </Button>
-
-                                        <p>
-                                            Chuyên khoa:{' '}
-                                            <b>
-                                                {selectedUser.specialtyName ||
-                                                    'Chưa gán'}
-                                            </b>
-                                        </p>
-
-                                        <p>
-                                            Giấy phép:{' '}
-                                            {selectedUser.licenseNumber ||
-                                                'Chưa cập nhật'}
-                                        </p>
-
-                                        <p>
-                                            Học vị:{' '}
-                                            {selectedUser.degree ||
-                                                'Chưa cập nhật'}
-                                        </p>
-
-                                        <p>
-                                            Kinh nghiệm:{' '}
-                                            {selectedUser.experienceYears || 0}{' '}
-                                            năm
-                                        </p>
-
-                                        <p>
-                                            Giới thiệu:{' '}
-                                            {selectedUser.bio ||
-                                                'Chưa cập nhật'}
-                                        </p>
-                                    </>
-                                )}
-
-                                <h3 style={{ marginTop: 20 }}>Permissions</h3>
-
-                                <Space wrap>
-                                    {selectedUser.permissions?.map(
-                                        (permission) => (
-                                            <Tag key={permission}>
-                                                {permission}
-                                            </Tag>
-                                        ),
-                                    )}
-                                </Space>
-                            </div>
-                        )}
-                    </ClinicalPageState>
-                </Drawer>
-
-                <Drawer
-                    title="Cập nhật hồ sơ bác sĩ"
-                    open={doctorProfileOpen}
-                    width={560}
-                    onClose={() => {
-                        setDoctorProfileOpen(false);
-                        doctorProfileForm.resetFields();
-                    }}
+                <Modal
+                    title="Chỉnh sửa hồ sơ bác sĩ"
+                    open={openDoctorProfileModal}
+                    onCancel={() => setOpenDoctorProfileModal(false)}
+                    footer={null}
                     destroyOnClose
                 >
                     <Form
                         form={doctorProfileForm}
                         layout="vertical"
                         onFinish={handleUpdateDoctorProfile}
+                        requiredMark={false}
                     >
-                        <Alert
-                            type="info"
-                            showIcon
-                            message="Thông tin này sẽ hiển thị ở danh bạ bác sĩ và luồng bệnh nhân đặt lịch"
-                            style={{ marginBottom: 16 }}
-                        />
-
-                        <Form.Item label="Bác sĩ">
-                            <Input
-                                value={
-                                    selectedUser?.fullName ||
-                                    selectedUser?.email
-                                }
-                                disabled
-                            />
-                        </Form.Item>
-
-                        <Form.Item label="Chuyên khoa" name="specialtyId">
-                            <Select
-                                allowClear
-                                showSearch
-                                placeholder="Chọn chuyên khoa"
-                                optionFilterProp="label"
-                                options={specialties.map((item) => ({
-                                    value: item.id,
-                                    label: item.name,
-                                }))}
-                            />
-                        </Form.Item>
-
-                        <Form.Item label="Số giấy phép" name="licenseNumber">
-                            <Input placeholder="VN-DR-001" />
-                        </Form.Item>
-
-                        <Form.Item label="Học vị" name="degree">
-                            <Input placeholder="BS.CKI, ThS, TS..." />
+                        <Form.Item label="Người dùng">
+                            <Input value={selectedUser?.email} disabled />
                         </Form.Item>
 
                         <Form.Item
-                            label="Số năm kinh nghiệm"
-                            name="experienceYears"
+                            label="ID chuyên khoa"
+                            name="specialtyId"
+                            extra="Nếu đã có trang quản lý chuyên khoa, nhập đúng ID chuyên khoa tương ứng."
                         >
-                            <InputNumber min={0} style={{ width: '100%' }} />
+                            <Input placeholder="UUID chuyên khoa" />
+                        </Form.Item>
+
+                        <Form.Item label="Mã giấy phép" name="licenseNumber">
+                            <Input placeholder="VD: CCHN-000123" />
+                        </Form.Item>
+
+                        <Form.Item label="Học vị / chức danh" name="degree">
+                            <Input placeholder="VD: Bác sĩ Chuyên khoa I" />
+                        </Form.Item>
+
+                        <Form.Item label="Số năm kinh nghiệm" name="experienceYears">
+                            <InputNumber min={0} max={60} style={{ width: '100%' }} />
                         </Form.Item>
 
                         <Form.Item label="Giới thiệu" name="bio">
                             <Input.TextArea
                                 rows={4}
-                                placeholder="Mô tả kinh nghiệm, thế mạnh chuyên môn..."
+                                placeholder="Mô tả ngắn về kinh nghiệm, chuyên môn, định hướng điều trị..."
                             />
                         </Form.Item>
 
                         <Button
                             type="primary"
                             htmlType="submit"
-                            loading={updatingDoctorProfile}
+                            loading={saving}
                             block
                         >
                             Lưu hồ sơ bác sĩ
                         </Button>
                     </Form>
-                </Drawer>
+                </Modal>
             </RoleGuardState>
         </DashboardFrame>
     );

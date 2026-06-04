@@ -1,40 +1,41 @@
 import { apiRequest } from '@/lib/api/http';
 import type {
-    AdminCreateStaffPayload,
+    AdminCreateUserPayload,
     AdminUpdateDoctorProfilePayload,
+    AdminUpdateUserRolesPayload,
     AdminUpdateUserStatusPayload,
     AdminUser,
-    AdminUserRoleCode,
+    AdminUserFilter,
 } from '@/types/admin-user';
 import type { PageResponse } from '@/types/pagination';
 
-export async function getAdminUsers(params?: {
-    roleCode?: AdminUserRoleCode;
-    size?: number;
-}) {
-    const searchParams = new URLSearchParams();
+function buildUserQuery(filter?: AdminUserFilter) {
+    const params = new URLSearchParams();
 
-    searchParams.set('size', String(params?.size || 100));
+    params.set('page', String(filter?.page || 0));
+    params.set('size', String(filter?.size || 20));
 
-    if (params?.roleCode && params.roleCode !== 'ALL') {
-        searchParams.set('roleCode', params.roleCode);
+    if (filter?.keyword) params.set('keyword', filter.keyword);
+    if (filter?.status && filter.status !== 'ALL') {
+        params.set('status', filter.status);
+    }
+    if (filter?.role && filter.role !== 'ALL') {
+        params.set('role', filter.role);
     }
 
+    return params.toString();
+}
+
+export async function getAdminUsers(filter?: AdminUserFilter) {
     const res = await apiRequest<PageResponse<AdminUser>>(
-        `/v1/admin/users?${searchParams.toString()}`,
+        `/v1/admin/users?${buildUserQuery(filter)}`,
     );
 
     return res.data;
 }
 
-export async function getAdminUserById(id: string) {
-    const res = await apiRequest<AdminUser>(`/v1/admin/users/${id}`);
-
-    return res.data;
-}
-
-export async function createAdminStaff(payload: AdminCreateStaffPayload) {
-    const res = await apiRequest<AdminUser>('/v1/admin/users/staff', {
+export async function createAdminUser(payload: AdminCreateUserPayload) {
+    const res = await apiRequest<AdminUser>('/v1/admin/users', {
         method: 'POST',
         body: payload,
     });
@@ -43,23 +44,41 @@ export async function createAdminStaff(payload: AdminCreateStaffPayload) {
 }
 
 export async function updateAdminUserStatus(
-    id: string,
+    userId: string,
     payload: AdminUpdateUserStatusPayload,
 ) {
-    const res = await apiRequest<AdminUser>(`/v1/admin/users/${id}/status`, {
-        method: 'PATCH',
-        body: payload,
-    });
+    const res = await apiRequest<AdminUser>(
+        `/v1/admin/users/${userId}/status`,
+        {
+            method: 'PUT',
+            body: payload,
+        },
+    );
+
+    return res.data;
+}
+
+export async function updateAdminUserRoles(
+    userId: string,
+    payload: AdminUpdateUserRolesPayload,
+) {
+    const res = await apiRequest<AdminUser>(
+        `/v1/admin/users/${userId}/roles`,
+        {
+            method: 'PUT',
+            body: payload,
+        },
+    );
 
     return res.data;
 }
 
 export async function updateAdminDoctorProfile(
-    id: string,
+    userId: string,
     payload: AdminUpdateDoctorProfilePayload,
 ) {
     const res = await apiRequest<AdminUser>(
-        `/v1/admin/users/${id}/doctor-profile`,
+        `/v1/admin/users/${userId}/doctor-profile`,
         {
             method: 'PUT',
             body: payload,

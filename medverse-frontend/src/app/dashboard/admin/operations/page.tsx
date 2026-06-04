@@ -1,121 +1,63 @@
 'use client';
 
 import {
+    AlertOutlined,
+    AppstoreOutlined,
+    AuditOutlined,
+    CalendarOutlined,
+    CheckCircleOutlined,
+    ClockCircleOutlined,
+    ExclamationCircleOutlined,
+    FileProtectOutlined,
+    MedicineBoxOutlined,
+    SafetyCertificateOutlined,
+    TeamOutlined,
+    UserOutlined,
+} from '@ant-design/icons';
+import {
     Alert,
     Button,
     Card,
     List,
     Progress,
+    Skeleton,
     Space,
     Statistic,
     Tag,
 } from 'antd';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
-import ClinicalPageState from '../../_components/ClinicalPageState';
 import DashboardFrame from '../../_components/DashboardFrame';
 import RoleGuardState from '../../_components/RoleGuardState';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
 import { getAdminOperationsSummary } from '@/services/admin-operations.service';
-import type {
-    AdminOperationalWarning,
-    AdminOperationsSummary,
-} from '@/types/admin-operations';
+import type { AdminOperationsSummary } from '@/types/admin-operations';
 import styles from '../../dashboard.module.scss';
 
-function safePercent(value: number, total: number) {
+type OperationItem = {
+    label: string;
+    value: number;
+    description: string;
+    href?: string;
+    tone?: 'good' | 'warning' | 'danger' | 'neutral';
+};
+
+function percent(value: number, total: number) {
     if (!total || total <= 0) return 0;
 
     return Math.round((value / total) * 100);
 }
 
-function getWarningColor(severity?: string) {
-    if (severity === 'CRITICAL' || severity === 'HIGH') {
-        return 'red';
-    }
-
-    if (severity === 'MEDIUM') {
-        return 'orange';
-    }
+function getToneColor(tone?: OperationItem['tone']) {
+    if (tone === 'good') return 'green';
+    if (tone === 'warning') return 'orange';
+    if (tone === 'danger') return 'red';
 
     return 'blue';
 }
 
-function getWarningTypeLabel(type?: string) {
-    if (type === 'APPOINTMENT_REQUEST') return 'Yêu cầu đặt lịch';
-    if (type === 'DOCTOR_PROFILE') return 'Hồ sơ bác sĩ';
-    if (type === 'APPOINTMENT') return 'Lịch hẹn';
-    if (type === 'PRESCRIPTION') return 'Đơn thuốc';
-
-    return type || 'Cảnh báo';
-}
-
-function OperationMetricCard({
-    title,
-    value,
-    caption,
-}: {
-    title: string;
-    value: number;
-    caption: string;
-}) {
-    return (
-        <Card className={styles.metricCard}>
-            <Statistic title={title} value={value} />
-            <p style={{ marginBottom: 0, color: '#6a7c7a' }}>{caption}</p>
-        </Card>
-    );
-}
-
-function WarningList({ warnings }: { warnings: AdminOperationalWarning[] }) {
-    if (!warnings.length) {
-        return (
-            <ClinicalEmptyState
-                title="Không có cảnh báo vận hành"
-                description="Hiện tại hệ thống chưa ghi nhận vấn đề nổi bật cần admin xử lý."
-            />
-        );
-    }
-
-    return (
-        <List
-            dataSource={warnings}
-            renderItem={(warning) => (
-                <List.Item className={styles.cleanListItem}>
-                    <List.Item.Meta
-                        title={
-                            <div className={styles.listTitle}>
-                                <strong>{warning.title}</strong>
-
-                                <Space wrap>
-                                    <Tag color={getWarningColor(warning.severity)}>
-                                        {warning.severity}
-                                    </Tag>
-
-                                    <Tag>{getWarningTypeLabel(warning.type)}</Tag>
-
-                                    <Tag color="purple">
-                                        {warning.count} mục
-                                    </Tag>
-                                </Space>
-                            </div>
-                        }
-                        description={
-                            <div>
-                                <p>{warning.message}</p>
-                            </div>
-                        }
-                    />
-
-                    {warning.href && (
-                        <Button href={warning.href} type="primary" ghost>
-                            Xử lý
-                        </Button>
-                    )}
-                </List.Item>
-            )}
-        />
-    );
+function numberValue(value?: number | null) {
+    return Number(value || 0);
 }
 
 export default function AdminOperationsPage() {
@@ -136,7 +78,7 @@ export default function AdminOperationsPage() {
             setError(
                 err instanceof Error
                     ? err.message
-                    : 'Không thể tải dashboard vận hành.',
+                    : 'Không thể tải dữ liệu vận hành.',
             );
         } finally {
             setLoading(false);
@@ -146,471 +88,518 @@ export default function AdminOperationsPage() {
     useEffect(() => {
         if (!session) return;
 
-        if (session.role !== 'ADMIN' && session.primaryRole !== 'ADMIN') {
-            setLoading(false);
-            return;
-        }
-
         loadSummary();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
-    const doctorProfileCompleteness = useMemo(() => {
-        if (!summary) return 0;
+    const overview = summary?.overview;
+    const userBreakdown = summary?.userBreakdown;
+    const doctorQuality = summary?.doctorQuality;
+    const appointmentBreakdown = summary?.appointmentBreakdown;
+    const requestBreakdown = summary?.appointmentRequestBreakdown;
+    const prescriptionBreakdown = summary?.prescriptionBreakdown;
+    const inventorySummary = summary?.inventorySummary;
 
-        return safePercent(
-            summary.doctorQuality.completeProfile,
-            summary.doctorQuality.totalDoctors,
-        );
-    }, [summary]);
+    const warningCount = summary?.warnings?.length || 0;
 
-    const appointmentCompletionRate = useMemo(() => {
-        if (!summary) return 0;
+    const totalAppointments = numberValue(overview?.totalAppointments);
+    const completedAppointments = numberValue(appointmentBreakdown?.completed);
+    const cancelledAppointments = numberValue(appointmentBreakdown?.cancelled);
+    const noShowAppointments = numberValue(appointmentBreakdown?.noShow);
 
-        return safePercent(
-            summary.appointmentBreakdown.completed,
-            summary.appointmentBreakdown.total,
-        );
-    }, [summary]);
+    const appointmentCompletionRate = percent(
+        completedAppointments,
+        totalAppointments,
+    );
 
-    const prescriptionFinalizedRate = useMemo(() => {
-        if (!summary) return 0;
+    const operationalItems: OperationItem[] = useMemo(
+        () => [
+            {
+                label: 'Yêu cầu đặt lịch chờ xử lý',
+                value: numberValue(requestBreakdown?.pending),
+                description:
+                    'Các yêu cầu bệnh nhân đã gửi nhưng chưa được lễ tân xác nhận.',
+                href: '/dashboard/receptionist/requests',
+                tone: numberValue(requestBreakdown?.pending) > 0 ? 'warning' : 'good',
+            },
+            {
+                label: 'Lịch hẹn đã hủy',
+                value: cancelledAppointments,
+                description:
+                    'Các lịch hẹn đã bị hủy trong hệ thống. Nên theo dõi để phát hiện bất thường.',
+                href: '/dashboard/receptionist/appointments',
+                tone: cancelledAppointments > 0 ? 'warning' : 'good',
+            },
+            {
+                label: 'Bệnh nhân vắng mặt',
+                value: noShowAppointments,
+                description:
+                    'Các ca khám được đánh dấu vắng mặt, có thể ảnh hưởng đến hiệu suất lịch khám.',
+                href: '/dashboard/receptionist/appointments',
+                tone: noShowAppointments > 0 ? 'danger' : 'good',
+            },
+            {
+                label: 'Đơn thuốc còn nháp',
+                value: numberValue(prescriptionBreakdown?.draft),
+                description:
+                    'Đơn thuốc chưa phát hành. Cần kiểm tra nếu tồn tại quá lâu.',
+                href: '/dashboard/doctor/prescriptions',
+                tone: numberValue(prescriptionBreakdown?.draft) > 0 ? 'warning' : 'good',
+            },
+        ],
+        [
+            requestBreakdown?.pending,
+            cancelledAppointments,
+            noShowAppointments,
+            prescriptionBreakdown?.draft,
+        ],
+    );
 
-        return safePercent(
-            summary.prescriptionBreakdown.finalized,
-            summary.prescriptionBreakdown.total,
-        );
-    }, [summary]);
+    const dataQualityItems: OperationItem[] = useMemo(
+        () => [
+            {
+                label: 'Bác sĩ thiếu chuyên khoa',
+                value: numberValue(doctorQuality?.missingSpecialty),
+                description:
+                    'Bác sĩ chưa được gán chuyên khoa sẽ khó hiển thị đúng trong luồng đặt lịch.',
+                href: '/dashboard/admin/doctors',
+                tone: numberValue(doctorQuality?.missingSpecialty) > 0 ? 'warning' : 'good',
+            },
+            {
+                label: 'Bác sĩ thiếu mã giấy phép',
+                value: numberValue(doctorQuality?.missingLicense),
+                description:
+                    'Thông tin giấy phép giúp hồ sơ bác sĩ đáng tin cậy và đầy đủ hơn.',
+                href: '/dashboard/admin/doctors',
+                tone: numberValue(doctorQuality?.missingLicense) > 0 ? 'warning' : 'good',
+            },
+            {
+                label: 'Tài khoản đang hoạt động',
+                value: numberValue(userBreakdown?.active),
+                description:
+                    'Số tài khoản có thể đăng nhập và sử dụng hệ thống.',
+                href: '/dashboard/admin/users',
+                tone: 'good',
+            },
+            {
+                label: 'Tài khoản chưa kích hoạt',
+                value: numberValue(userBreakdown?.pendingActivation),
+                description:
+                    'Người dùng đã đăng ký nhưng chưa hoàn tất xác thực hoặc kích hoạt.',
+                href: '/dashboard/admin/users',
+                tone:
+                    numberValue(userBreakdown?.pendingActivation) > 0
+                        ? 'warning'
+                        : 'good',
+            },
+        ],
+        [
+            doctorQuality?.missingSpecialty,
+            doctorQuality?.missingLicense,
+            userBreakdown?.active,
+            userBreakdown?.pendingActivation,
+        ],
+    );
 
     if (authLoading || !session) {
-        return <ClinicalPageState loading>Loading</ClinicalPageState>;
+        return <Skeleton active paragraph={{ rows: 8 }} />;
     }
 
     return (
         <DashboardFrame
             session={session}
-            title="Dashboard vận hành"
-            subtitle="Theo dõi nhanh hoạt động hệ thống, lịch hẹn, bác sĩ, đơn thuốc và cảnh báo dữ liệu"
+            title="Vận hành hệ thống"
+            subtitle="Theo dõi hoạt động phòng khám, chất lượng dữ liệu và các điểm cần xử lý"
         >
             <RoleGuardState session={session} allow={['ADMIN']}>
-                {error && (
-                    <Alert
-                        type="error"
-                        showIcon
-                        message="Không thể tải dashboard vận hành"
-                        description={error}
-                        style={{ marginBottom: 20 }}
-                    />
-                )}
+                {loading ? (
+                    <Skeleton active paragraph={{ rows: 10 }} />
+                ) : (
+                    <div className={styles.roleDashboard}>
+                        {error && (
+                            <Alert
+                                type="error"
+                                showIcon
+                                message="Không thể tải dữ liệu vận hành"
+                                description={error}
+                            />
+                        )}
 
-                <ClinicalPageState
-                    loading={loading}
-                    empty={!summary}
-                    emptyTitle="Chưa có dữ liệu vận hành"
-                    emptyDescription="Backend chưa trả về dữ liệu operations summary."
-                >
-                    {summary && (
-                        <>
-                            <section className={styles.metricGrid}>
-                                <OperationMetricCard
-                                    title="Users"
-                                    value={summary.overview.totalUsers}
-                                    caption="Tổng tài khoản"
+                        <section className={styles.heroCard}>
+                            <div>
+                                <span>Trung tâm vận hành</span>
+                                <h2>
+                                    Nắm bắt tình trạng hệ thống và các vấn đề cần
+                                    ưu tiên xử lý.
+                                </h2>
+                                <p>
+                                    Dashboard này tổng hợp nhanh người dùng, bác
+                                    sĩ, lịch hẹn, đơn thuốc, kho thuốc và các
+                                    cảnh báo giúp quản trị viên điều phối hệ
+                                    thống hiệu quả hơn.
+                                </p>
+                            </div>
+
+                            <div className={styles.pulseCard}>
+                                <strong>{warningCount}</strong>
+                                <span>cảnh báo vận hành</span>
+                            </div>
+                        </section>
+
+                        <section className={styles.metricGrid}>
+                            <Card className={styles.metricCard}>
+                                <Statistic
+                                    title="Người dùng"
+                                    value={numberValue(overview?.totalUsers)}
+                                    prefix={<UserOutlined />}
                                 />
+                                <p>Tổng tài khoản trong hệ thống.</p>
+                            </Card>
 
-                                <OperationMetricCard
-                                    title="Doctors"
-                                    value={summary.overview.totalDoctors}
-                                    caption="Tổng bác sĩ"
+                            <Card className={styles.metricCard}>
+                                <Statistic
+                                    title="Bác sĩ"
+                                    value={numberValue(overview?.totalDoctors)}
+                                    prefix={<TeamOutlined />}
                                 />
+                                <p>Nhân sự y tế đang được quản lý.</p>
+                            </Card>
 
-                                <OperationMetricCard
-                                    title="Patients"
-                                    value={summary.overview.totalPatients}
-                                    caption="Tổng bệnh nhân"
+                            <Card className={styles.metricCard}>
+                                <Statistic
+                                    title="Lịch hẹn"
+                                    value={totalAppointments}
+                                    prefix={<CalendarOutlined />}
                                 />
+                                <p>Lịch hẹn đã ghi nhận trên hệ thống.</p>
+                            </Card>
 
-                                <OperationMetricCard
-                                    title="Appointments"
-                                    value={summary.overview.totalAppointments}
-                                    caption="Tổng lịch hẹn"
+                            <Card className={styles.metricCard}>
+                                <Statistic
+                                    title="Danh mục thuốc"
+                                    value={numberValue(overview?.totalMedications)}
+                                    prefix={<MedicineBoxOutlined />}
                                 />
-                            </section>
+                                <p>Thuốc sẵn sàng phục vụ kê đơn.</p>
+                            </Card>
+                        </section>
 
-                            <section
-                                className={styles.detailGrid}
-                                style={{ marginTop: 24 }}
+                        <section className={styles.detailGrid}>
+                            <Card
+                                className={styles.detailCard}
+                                title="Tình trạng vận hành"
+                                extra={
+                                    <Tag
+                                        color={
+                                            warningCount > 0 ? 'orange' : 'green'
+                                        }
+                                    >
+                                        {warningCount > 0
+                                            ? 'Cần theo dõi'
+                                            : 'Ổn định'}
+                                    </Tag>
+                                }
                             >
-                                <Card
-                                    className={styles.detailCard}
-                                    title="Chất lượng hồ sơ bác sĩ"
-                                    extra={
-                                        <Button
-                                            href="/dashboard/admin/doctors"
-                                            type="link"
+                                <List
+                                    dataSource={operationalItems}
+                                    renderItem={(item) => (
+                                        <List.Item
+                                            className={styles.cleanListItem}
                                         >
-                                            Quản lý bác sĩ
-                                        </Button>
-                                    }
-                                >
-                                    <Progress
-                                        percent={doctorProfileCompleteness}
-                                        status={
-                                            doctorProfileCompleteness >= 80
-                                                ? 'success'
-                                                : 'active'
-                                        }
-                                    />
-
-                                    <div className={styles.profileMatrix}>
-                                        <div>
-                                            <span>Tổng bác sĩ</span>
-                                            <strong>
-                                                {
-                                                    summary.doctorQuality
-                                                        .totalDoctors
+                                            <List.Item.Meta
+                                                avatar={
+                                                    item.tone === 'danger' ? (
+                                                        <ExclamationCircleOutlined
+                                                            style={{
+                                                                color: '#ef4444',
+                                                                fontSize: 22,
+                                                            }}
+                                                        />
+                                                    ) : item.tone ===
+                                                        'warning' ? (
+                                                        <AlertOutlined
+                                                            style={{
+                                                                color: '#f59e0b',
+                                                                fontSize: 22,
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <CheckCircleOutlined
+                                                            style={{
+                                                                color: '#10b981',
+                                                                fontSize: 22,
+                                                            }}
+                                                        />
+                                                    )
                                                 }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Hồ sơ đầy đủ</span>
-                                            <strong>
-                                                {
-                                                    summary.doctorQuality
-                                                        .completeProfile
+                                                title={
+                                                    <div
+                                                        className={
+                                                            styles.listTitle
+                                                        }
+                                                    >
+                                                        <strong>
+                                                            {item.label}
+                                                        </strong>
+                                                        <Tag
+                                                            color={getToneColor(
+                                                                item.tone,
+                                                            )}
+                                                        >
+                                                            {item.value}
+                                                        </Tag>
+                                                    </div>
                                                 }
-                                            </strong>
-                                        </div>
+                                                description={item.description}
+                                            />
 
-                                        <div>
-                                            <span>Thiếu chuyên khoa</span>
-                                            <strong>
-                                                {
-                                                    summary.doctorQuality
-                                                        .missingSpecialty
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Thiếu giấy phép</span>
-                                            <strong>
-                                                {
-                                                    summary.doctorQuality
-                                                        .missingLicense
-                                                }
-                                            </strong>
-                                        </div>
-                                    </div>
-                                </Card>
-
-                                <Card
-                                    className={styles.detailCard}
-                                    title="Tình hình lịch hẹn"
-                                    extra={
-                                        <Button
-                                            href="/dashboard/receptionist/appointments"
-                                            type="link"
-                                        >
-                                            Xem lịch hẹn
-                                        </Button>
-                                    }
-                                >
-                                    <Progress
-                                        percent={appointmentCompletionRate}
-                                        status={
-                                            appointmentCompletionRate >= 70
-                                                ? 'success'
-                                                : 'active'
-                                        }
-                                    />
-
-                                    <div className={styles.profileMatrix}>
-                                        <div>
-                                            <span>Hôm nay</span>
-                                            <strong>
-                                                {
-                                                    summary.appointmentBreakdown
-                                                        .today
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>7 ngày tới</span>
-                                            <strong>
-                                                {
-                                                    summary.appointmentBreakdown
-                                                        .upcoming7Days
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Scheduled</span>
-                                            <strong>
-                                                {
-                                                    summary.appointmentBreakdown
-                                                        .scheduled
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Confirmed</span>
-                                            <strong>
-                                                {
-                                                    summary.appointmentBreakdown
-                                                        .confirmed
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Completed</span>
-                                            <strong>
-                                                {
-                                                    summary.appointmentBreakdown
-                                                        .completed
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>No-show</span>
-                                            <strong>
-                                                {
-                                                    summary.appointmentBreakdown
-                                                        .noShow
-                                                }
-                                            </strong>
-                                        </div>
-                                    </div>
-                                </Card>
-
-                                <Card
-                                    className={styles.detailCard}
-                                    title="Yêu cầu đặt lịch"
-                                    extra={
-                                        <Button
-                                            href="/dashboard/receptionist/requests"
-                                            type="link"
-                                        >
-                                            Xử lý request
-                                        </Button>
-                                    }
-                                >
-                                    <div className={styles.profileMatrix}>
-                                        <div>
-                                            <span>Tổng request</span>
-                                            <strong>
-                                                {
-                                                    summary
-                                                        .appointmentRequestBreakdown
-                                                        .total
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Pending</span>
-                                            <strong>
-                                                {
-                                                    summary
-                                                        .appointmentRequestBreakdown
-                                                        .pending
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Approved</span>
-                                            <strong>
-                                                {
-                                                    summary
-                                                        .appointmentRequestBreakdown
-                                                        .approved
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Rejected</span>
-                                            <strong>
-                                                {
-                                                    summary
-                                                        .appointmentRequestBreakdown
-                                                        .rejected
-                                                }
-                                            </strong>
-                                        </div>
-                                    </div>
-                                </Card>
-
-                                <Card
-                                    className={styles.detailCard}
-                                    title="Đơn thuốc"
-                                    extra={
-                                        <Button
-                                            href="/dashboard/doctor/prescriptions"
-                                            type="link"
-                                        >
-                                            Xem đơn thuốc
-                                        </Button>
-                                    }
-                                >
-                                    <Progress
-                                        percent={prescriptionFinalizedRate}
-                                        status={
-                                            prescriptionFinalizedRate >= 80
-                                                ? 'success'
-                                                : 'active'
-                                        }
-                                    />
-
-                                    <div className={styles.profileMatrix}>
-                                        <div>
-                                            <span>Tổng đơn</span>
-                                            <strong>
-                                                {
-                                                    summary.prescriptionBreakdown
-                                                        .total
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Draft</span>
-                                            <strong>
-                                                {
-                                                    summary.prescriptionBreakdown
-                                                        .draft
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Finalized</span>
-                                            <strong>
-                                                {
-                                                    summary.prescriptionBreakdown
-                                                        .finalized
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Cancelled</span>
-                                            <strong>
-                                                {
-                                                    summary.prescriptionBreakdown
-                                                        .cancelled
-                                                }
-                                            </strong>
-                                        </div>
-                                    </div>
-                                </Card>
-
-                                <Card
-                                    className={styles.detailCard}
-                                    title="Tài khoản"
-                                    extra={
-                                        <Button
-                                            href="/dashboard/admin/users"
-                                            type="link"
-                                        >
-                                            Quản lý user
-                                        </Button>
-                                    }
-                                >
-                                    <div className={styles.profileMatrix}>
-                                        <div>
-                                            <span>Active</span>
-                                            <strong>
-                                                {summary.userBreakdown.active}
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Locked</span>
-                                            <strong>
-                                                {summary.userBreakdown.locked}
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Disabled</span>
-                                            <strong>
-                                                {summary.userBreakdown.disabled}
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Pending</span>
-                                            <strong>
-                                                {
-                                                    summary.userBreakdown
-                                                        .pendingActivation
-                                                }
-                                            </strong>
-                                        </div>
-                                    </div>
-                                </Card>
-
-                                <Card
-                                    className={styles.detailCard}
-                                    title="Kho thuốc & danh mục"
-                                >
-                                    <div className={styles.profileMatrix}>
-                                        <div>
-                                            <span>Thuốc</span>
-                                            <strong>
-                                                {
-                                                    summary.inventorySummary
-                                                        .medicationCount
-                                                }
-                                            </strong>
-                                        </div>
-
-                                        <div>
-                                            <span>Chuyên khoa</span>
-                                            <strong>
-                                                {
-                                                    summary.overview
-                                                        .totalSpecialties
-                                                }
-                                            </strong>
-                                        </div>
-                                    </div>
-
-                                    <Space wrap style={{ marginTop: 16 }}>
-                                        <Button href="/dashboard/admin/inventory">
-                                            Kho thuốc
-                                        </Button>
-
-                                        <Button href="/dashboard/admin/specialties">
-                                            Chuyên khoa
-                                        </Button>
-                                    </Space>
-                                </Card>
-                            </section>
+                                            {item.href && (
+                                                <Link href={item.href}>
+                                                    <Button type="link">
+                                                        Xem
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                        </List.Item>
+                                    )}
+                                />
+                            </Card>
 
                             <Card
                                 className={styles.detailCard}
-                                title="Cảnh báo vận hành"
-                                style={{ marginTop: 24 }}
+                                title="Chất lượng dữ liệu"
                                 extra={
-                                    <Button onClick={loadSummary}>
-                                        Làm mới
-                                    </Button>
+                                    <Link href="/dashboard/admin/doctors">
+                                        <Button type="link">Rà soát</Button>
+                                    </Link>
                                 }
                             >
-                                <WarningList warnings={summary.warnings || []} />
+                                <List
+                                    dataSource={dataQualityItems}
+                                    renderItem={(item) => (
+                                        <List.Item
+                                            className={styles.cleanListItem}
+                                        >
+                                            <List.Item.Meta
+                                                title={
+                                                    <div
+                                                        className={
+                                                            styles.listTitle
+                                                        }
+                                                    >
+                                                        <strong>
+                                                            {item.label}
+                                                        </strong>
+                                                        <Tag
+                                                            color={getToneColor(
+                                                                item.tone,
+                                                            )}
+                                                        >
+                                                            {item.value}
+                                                        </Tag>
+                                                    </div>
+                                                }
+                                                description={item.description}
+                                            />
+
+                                            {item.href && (
+                                                <Link href={item.href}>
+                                                    <Button type="link">
+                                                        Xem
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                        </List.Item>
+                                    )}
+                                />
                             </Card>
-                        </>
-                    )}
-                </ClinicalPageState>
+                        </section>
+
+                        <section className={styles.detailGrid}>
+                            <Card
+                                className={styles.detailCard}
+                                title="Hiệu suất lịch hẹn"
+                            >
+                                <Space
+                                    direction="vertical"
+                                    size={20}
+                                    style={{ width: '100%' }}
+                                >
+                                    <div>
+                                        <div className={styles.listTitle}>
+                                            <strong>Tỷ lệ hoàn tất lịch hẹn</strong>
+                                            <Tag color="green">
+                                                {appointmentCompletionRate}%
+                                            </Tag>
+                                        </div>
+
+                                        <Progress
+                                            percent={appointmentCompletionRate}
+                                            strokeColor="#19b6a4"
+                                        />
+                                    </div>
+
+                                    <div className={styles.quickActionGrid}>
+                                        <Card size="small">
+                                            <Statistic
+                                                title="Đã hoàn tất"
+                                                value={completedAppointments}
+                                                prefix={<CheckCircleOutlined />}
+                                            />
+                                        </Card>
+
+                                        <Card size="small">
+                                            <Statistic
+                                                title="Đã hủy"
+                                                value={cancelledAppointments}
+                                                prefix={<CalendarOutlined />}
+                                            />
+                                        </Card>
+
+                                        <Card size="small">
+                                            <Statistic
+                                                title="Vắng mặt"
+                                                value={noShowAppointments}
+                                                prefix={<ClockCircleOutlined />}
+                                            />
+                                        </Card>
+
+                                        <Card size="small">
+                                            <Statistic
+                                                title="Đang chờ"
+                                                value={numberValue(
+                                                    appointmentBreakdown?.scheduled,
+                                                )}
+                                                prefix={<CalendarOutlined />}
+                                            />
+                                        </Card>
+                                    </div>
+                                </Space>
+                            </Card>
+
+                            <Card
+                                className={styles.detailCard}
+                                title="Tác vụ quản trị nhanh"
+                            >
+                                <div className={styles.quickActionGrid}>
+                                    <Link href="/dashboard/admin/users">
+                                        <Button block icon={<UserOutlined />}>
+                                            Người dùng
+                                        </Button>
+                                    </Link>
+
+                                    <Link href="/dashboard/admin/doctors">
+                                        <Button block icon={<TeamOutlined />}>
+                                            Hồ sơ bác sĩ
+                                        </Button>
+                                    </Link>
+
+                                    <Link href="/dashboard/admin/access-control">
+                                        <Button
+                                            block
+                                            icon={<SafetyCertificateOutlined />}
+                                        >
+                                            Phân quyền
+                                        </Button>
+                                    </Link>
+
+                                    <Link href="/dashboard/admin/specialties">
+                                        <Button block icon={<AppstoreOutlined />}>
+                                            Chuyên khoa
+                                        </Button>
+                                    </Link>
+
+                                    <Link href="/dashboard/admin/inventory">
+                                        <Button block icon={<MedicineBoxOutlined />}>
+                                            Kho thuốc
+                                        </Button>
+                                    </Link>
+
+                                    <Link href="/dashboard/admin/audit-logs">
+                                        <Button block icon={<AuditOutlined />}>
+                                            Audit Logs
+                                        </Button>
+                                    </Link>
+                                </div>
+                            </Card>
+                        </section>
+
+                        <section className={styles.detailGrid}>
+                            <Card
+                                className={styles.detailCard}
+                                title="Đơn thuốc"
+                            >
+                                <div className={styles.quickActionGrid}>
+                                    <Card size="small">
+                                        <Statistic
+                                            title="Bản nháp"
+                                            value={numberValue(
+                                                prescriptionBreakdown?.draft,
+                                            )}
+                                            prefix={<FileProtectOutlined />}
+                                        />
+                                    </Card>
+
+                                    <Card size="small">
+                                        <Statistic
+                                            title="Đã phát hành"
+                                            value={numberValue(
+                                                prescriptionBreakdown?.finalized,
+                                            )}
+                                            prefix={<CheckCircleOutlined />}
+                                        />
+                                    </Card>
+
+                                    <Card size="small">
+                                        <Statistic
+                                            title="Đã hủy"
+                                            value={numberValue(
+                                                prescriptionBreakdown?.cancelled,
+                                            )}
+                                            prefix={<ExclamationCircleOutlined />}
+                                        />
+                                    </Card>
+                                </div>
+                            </Card>
+
+                            <Card
+                                className={styles.detailCard}
+                                title="Kho thuốc"
+                            >
+                                <div className={styles.quickActionGrid}>
+                                    <Card size="small">
+                                        <Statistic
+                                            title="Tổng tồn kho"
+                                            value={numberValue(
+                                                inventorySummary?.totalStock,
+                                            )}
+                                            prefix={<MedicineBoxOutlined />}
+                                        />
+                                    </Card>
+
+                                    <Card size="small">
+                                        <Statistic
+                                            title="Thuốc sắp hết"
+                                            value={numberValue(
+                                                inventorySummary?.lowStockItems,
+                                            )}
+                                            prefix={<AlertOutlined />}
+                                        />
+                                    </Card>
+
+                                    <Card size="small">
+                                        <Statistic
+                                            title="Lô sắp hết hạn"
+                                            value={numberValue(
+                                                inventorySummary?.expiringBatches,
+                                            )}
+                                            prefix={<ClockCircleOutlined />}
+                                        />
+                                    </Card>
+                                </div>
+                            </Card>
+                        </section>
+                    </div>
+                )}
             </RoleGuardState>
         </DashboardFrame>
     );

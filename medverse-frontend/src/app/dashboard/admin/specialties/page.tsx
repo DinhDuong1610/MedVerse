@@ -1,22 +1,33 @@
 'use client';
 
 import {
+    AppstoreOutlined,
+    DeleteOutlined,
+    EditOutlined,
+    EyeOutlined,
+    PlusOutlined,
+    ReloadOutlined,
+    SearchOutlined,
+    TeamOutlined,
+} from '@ant-design/icons';
+import {
     Alert,
     Button,
     Card,
+    Descriptions,
+    Drawer,
     Form,
     Input,
-    List,
     Modal,
-    Popconfirm,
+    Skeleton,
     Space,
     Statistic,
+    Table,
     Tag,
     message,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
-import ClinicalEmptyState from '../../_components/ClinicalEmptyState';
-import ClinicalPageState from '../../_components/ClinicalPageState';
 import DashboardFrame from '../../_components/DashboardFrame';
 import RoleGuardState from '../../_components/RoleGuardState';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
@@ -38,44 +49,61 @@ type SpecialtyFormValues = {
     description?: string;
 };
 
-function normalizePayload(values: SpecialtyFormValues): AdminSpecialtyPayload {
-    return {
-        code: values.code.trim().toUpperCase().replaceAll(' ', '_'),
-        name: values.name.trim(),
-        description: values.description?.trim() || undefined,
-    };
+function normalizeKeyword(value?: string) {
+    return String(value || '')
+        .trim()
+        .toLowerCase();
 }
 
 function formatDateTime(value?: string) {
-    if (!value) return 'Chưa rõ';
+    if (!value) return 'Chưa ghi nhận';
 
     return new Date(value).toLocaleString('vi-VN');
 }
 
+function buildPayload(values: SpecialtyFormValues): AdminSpecialtyPayload {
+    const payload: AdminSpecialtyPayload = {
+        code: values.code.trim().toUpperCase(),
+        name: values.name.trim(),
+    };
+
+    const description = values.description?.trim();
+
+    if (description) {
+        payload.description = description;
+    }
+
+    return payload;
+}
+
 export default function AdminSpecialtiesPage() {
     const { session, loading: authLoading } = useAuthSession();
-
-    const [form] = Form.useForm<SpecialtyFormValues>();
 
     const [specialties, setSpecialties] = useState<AdminSpecialty[]>([]);
     const [keyword, setKeyword] = useState('');
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [deletingId, setDeletingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const [modalOpen, setModalOpen] = useState(false);
+    const [selectedSpecialty, setSelectedSpecialty] =
+        useState<AdminSpecialty | null>(null);
+
+    const [openDetailDrawer, setOpenDetailDrawer] = useState(false);
+    const [openFormModal, setOpenFormModal] = useState(false);
     const [editingSpecialty, setEditingSpecialty] =
         useState<AdminSpecialty | null>(null);
+
+    const [form] = Form.useForm<SpecialtyFormValues>();
 
     const loadSpecialties = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            const page = await getAdminSpecialties(100);
-            setSpecialties(page.content || []);
+            const data = await getAdminSpecialties();
+
+            setSpecialties(data || []);
         } catch (err) {
             setError(
                 err instanceof Error
@@ -90,74 +118,76 @@ export default function AdminSpecialtiesPage() {
     useEffect(() => {
         if (!session) return;
 
-        if (session.role !== 'ADMIN' && session.primaryRole !== 'ADMIN') {
-            setLoading(false);
-            return;
-        }
-
         loadSpecialties();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
     const filteredSpecialties = useMemo(() => {
-        const query = keyword.trim().toLowerCase();
+        const search = normalizeKeyword(keyword);
 
-        if (!query) return specialties;
+        if (!search) return specialties;
 
         return specialties.filter((item) => {
             return (
-                item.code.toLowerCase().includes(query) ||
-                item.name.toLowerCase().includes(query) ||
-                item.description?.toLowerCase().includes(query)
+                item.code.toLowerCase().includes(search) ||
+                item.name.toLowerCase().includes(search) ||
+                item.description?.toLowerCase().includes(search)
             );
         });
     }, [specialties, keyword]);
 
     const metrics = useMemo(() => {
         const withDescription = specialties.filter((item) =>
-            item.description?.trim(),
+            Boolean(item.description?.trim()),
         ).length;
+
+        const missingDescription = specialties.length - withDescription;
 
         return {
             total: specialties.length,
             withDescription,
-            missingDescription: specialties.length - withDescription,
+            missingDescription,
         };
     }, [specialties]);
 
-    const openCreateModal = () => {
+    const openCreate = () => {
         setEditingSpecialty(null);
         form.resetFields();
-        setModalOpen(true);
+        setOpenFormModal(true);
     };
 
-    const openEditModal = (specialty: AdminSpecialty) => {
+    const openEdit = (specialty: AdminSpecialty) => {
         setEditingSpecialty(specialty);
 
         form.setFieldsValue({
             code: specialty.code,
             name: specialty.name,
-            description: specialty.description || '',
+            description: specialty.description,
         });
 
-        setModalOpen(true);
+        setOpenFormModal(true);
+    };
+
+    const openDetail = (specialty: AdminSpecialty) => {
+        setSelectedSpecialty(specialty);
+        setOpenDetailDrawer(true);
     };
 
     const handleSubmit = async (values: SpecialtyFormValues) => {
         try {
             setSaving(true);
 
-            const payload = normalizePayload(values);
+            const payload = buildPayload(values);
 
             if (editingSpecialty) {
                 await updateAdminSpecialty(editingSpecialty.id, payload);
                 message.success('Đã cập nhật chuyên khoa.');
             } else {
                 await createAdminSpecialty(payload);
-                message.success('Đã tạo chuyên khoa.');
+                message.success('Đã tạo chuyên khoa mới.');
             }
 
-            setModalOpen(false);
+            setOpenFormModal(false);
             setEditingSpecialty(null);
             form.resetFields();
 
@@ -173,212 +203,324 @@ export default function AdminSpecialtiesPage() {
         }
     };
 
-    const handleDelete = async (specialty: AdminSpecialty) => {
-        try {
-            setDeletingId(specialty.id);
+    const handleDelete = (specialty: AdminSpecialty) => {
+        Modal.confirm({
+            title: 'Xóa chuyên khoa?',
+            content: (
+                <div>
+                    <p>
+                        Chuyên khoa <b>{specialty.name}</b> sẽ bị xóa khỏi hệ
+                        thống.
+                    </p>
+                    <p>
+                        Không nên xóa nếu chuyên khoa này đang được gán cho bác
+                        sĩ hoặc đang có lịch hẹn liên quan.
+                    </p>
+                </div>
+            ),
+            okText: 'Xóa chuyên khoa',
+            cancelText: 'Đóng',
+            okButtonProps: {
+                danger: true,
+            },
+            onOk: async () => {
+                try {
+                    await deleteAdminSpecialty(specialty.id);
 
-            await deleteAdminSpecialty(specialty.id);
-
-            message.success('Đã xóa chuyên khoa.');
-            await loadSpecialties();
-        } catch (err) {
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : 'Không thể xóa chuyên khoa.',
-            );
-        } finally {
-            setDeletingId(null);
-        }
+                    message.success('Đã xóa chuyên khoa.');
+                    await loadSpecialties();
+                } catch (err) {
+                    message.error(
+                        err instanceof Error
+                            ? err.message
+                            : 'Không thể xóa chuyên khoa. Có thể chuyên khoa đang được sử dụng.',
+                    );
+                }
+            },
+        });
     };
 
+    const columns: ColumnsType<AdminSpecialty> = [
+        {
+            title: 'Chuyên khoa',
+            key: 'specialty',
+            render: (_, record) => (
+                <Space direction="vertical" size={2}>
+                    <strong>{record.name}</strong>
+                    <span className={styles.mutedText}>{record.code}</span>
+                </Space>
+            ),
+        },
+        {
+            title: 'Mô tả',
+            dataIndex: 'description',
+            render: (value) =>
+                value ? (
+                    <span>{value}</span>
+                ) : (
+                    <Tag color="orange">Chưa có mô tả</Tag>
+                ),
+        },
+        {
+            title: 'Cập nhật',
+            dataIndex: 'updatedAt',
+            width: 190,
+            render: (value, record) =>
+                formatDateTime(value || record.createdAt),
+        },
+        {
+            title: 'Thao tác',
+            key: 'actions',
+            width: 260,
+            fixed: 'right',
+            render: (_, record) => (
+                <Space wrap>
+                    <Button
+                        size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => openDetail(record)}
+                    >
+                        Chi tiết
+                    </Button>
+
+                    <Button
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => openEdit(record)}
+                    >
+                        Chỉnh sửa
+                    </Button>
+
+                    <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDelete(record)}
+                    >
+                        Xóa
+                    </Button>
+                </Space>
+            ),
+        },
+    ];
+
     if (authLoading || !session) {
-        return <ClinicalPageState loading>Loading</ClinicalPageState>;
+        return <Skeleton active paragraph={{ rows: 8 }} />;
     }
 
     return (
         <DashboardFrame
             session={session}
             title="Quản lý chuyên khoa"
-            subtitle="Tạo, cập nhật và quản trị danh mục chuyên khoa dùng cho booking"
+            subtitle="Thiết lập danh mục chuyên khoa phục vụ đặt lịch và phân công bác sĩ"
         >
             <RoleGuardState session={session} allow={['ADMIN']}>
-                <section className={styles.metricGrid}>
-                    <Card className={styles.metricCard}>
-                        <Statistic
-                            title="Tổng chuyên khoa"
-                            value={metrics.total}
-                        />
-                    </Card>
-
-                    <Card className={styles.metricCard}>
-                        <Statistic
-                            title="Có mô tả"
-                            value={metrics.withDescription}
-                        />
-                    </Card>
-
-                    <Card className={styles.metricCard}>
-                        <Statistic
-                            title="Thiếu mô tả"
-                            value={metrics.missingDescription}
-                        />
-                    </Card>
-                </section>
-
-                <Card className={styles.detailCard} style={{ marginTop: 24 }}>
-                    <div className={styles.panelHeader}>
-                        <div>
-                            <span>Specialty management</span>
-                            <h2>Danh mục chuyên khoa</h2>
-                            <p>
-                                Chuyên khoa được dùng ở danh bạ bác sĩ và luồng
-                                bệnh nhân đặt lịch khám.
-                            </p>
-                        </div>
-
-                        <Space wrap>
-                            <Input.Search
-                                allowClear
-                                placeholder="Tìm code, tên, mô tả..."
-                                value={keyword}
-                                onChange={(event) =>
-                                    setKeyword(event.target.value)
-                                }
-                                style={{ width: 260 }}
-                            />
-
-                            <Button onClick={loadSpecialties}>
-                                Làm mới
-                            </Button>
-
-                            <Button type="primary" onClick={openCreateModal}>
-                                Tạo chuyên khoa
-                            </Button>
-                        </Space>
-                    </div>
-
+                <div className={styles.roleDashboard}>
                     {error && (
                         <Alert
                             type="error"
                             showIcon
                             message="Không thể tải chuyên khoa"
                             description={error}
-                            style={{ marginBottom: 16 }}
                         />
                     )}
 
-                    <ClinicalPageState loading={loading}>
-                        {filteredSpecialties.length === 0 ? (
-                            <ClinicalEmptyState
-                                title="Chưa có chuyên khoa"
-                                description="Không tìm thấy chuyên khoa nào theo bộ lọc hiện tại."
+                    <section className={styles.heroCard}>
+                        <div>
+                            <span>Danh mục chuyên môn</span>
+                            <h2>Quản lý chuyên khoa trong hệ thống phòng khám.</h2>
+                            <p>
+                                Chuyên khoa được dùng khi gán hồ sơ bác sĩ, hiển
+                                thị danh mục đặt lịch và hỗ trợ bệnh nhân chọn
+                                đúng nhóm khám phù hợp.
+                            </p>
+                        </div>
+
+                        <div className={styles.pulseCard}>
+                            <strong>{metrics.total}</strong>
+                            <span>chuyên khoa đang quản lý</span>
+                        </div>
+                    </section>
+
+                    <section className={styles.metricGrid}>
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Tổng chuyên khoa"
+                                value={metrics.total}
+                                prefix={<AppstoreOutlined />}
                             />
-                        ) : (
-                            <List
-                                dataSource={filteredSpecialties}
-                                renderItem={(specialty) => (
-                                    <List.Item className={styles.cleanListItem}>
-                                        <List.Item.Meta
-                                            title={
-                                                <div className={styles.listTitle}>
-                                                    <strong>
-                                                        {specialty.name}
-                                                    </strong>
+                            <p>Danh mục chuyên khoa trong hệ thống.</p>
+                        </Card>
 
-                                                    <Space wrap>
-                                                        <Tag color="blue">
-                                                            {specialty.code}
-                                                        </Tag>
-                                                    </Space>
-                                                </div>
-                                            }
-                                            description={
-                                                <div>
-                                                    <p>
-                                                        {specialty.description ||
-                                                            'Chưa có mô tả.'}
-                                                    </p>
-
-                                                    <p>
-                                                        Cập nhật lần cuối:{' '}
-                                                        <b>
-                                                            {formatDateTime(
-                                                                specialty.updatedAt,
-                                                            )}
-                                                        </b>
-                                                    </p>
-                                                </div>
-                                            }
-                                        />
-
-                                        <Space wrap>
-                                            <Button
-                                                onClick={() =>
-                                                    openEditModal(specialty)
-                                                }
-                                            >
-                                                Sửa
-                                            </Button>
-
-                                            <Popconfirm
-                                                title="Xóa chuyên khoa?"
-                                                description="Chuyên khoa sẽ bị xóa mềm. Nếu đã gắn với bác sĩ, bạn nên cân nhắc trước khi xóa."
-                                                okText="Xóa"
-                                                cancelText="Đóng"
-                                                okButtonProps={{
-                                                    danger: true,
-                                                }}
-                                                onConfirm={() =>
-                                                    handleDelete(specialty)
-                                                }
-                                            >
-                                                <Button
-                                                    danger
-                                                    loading={
-                                                        deletingId ===
-                                                        specialty.id
-                                                    }
-                                                >
-                                                    Xóa
-                                                </Button>
-                                            </Popconfirm>
-                                        </Space>
-                                    </List.Item>
-                                )}
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Đã có mô tả"
+                                value={metrics.withDescription}
+                                prefix={<TeamOutlined />}
                             />
-                        )}
-                    </ClinicalPageState>
-                </Card>
+                            <p>Chuyên khoa có thông tin mô tả rõ ràng.</p>
+                        </Card>
+
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Thiếu mô tả"
+                                value={metrics.missingDescription}
+                                prefix={<EditOutlined />}
+                            />
+                            <p>Nên bổ sung để bệnh nhân dễ lựa chọn.</p>
+                        </Card>
+
+                        <Card className={styles.metricCard}>
+                            <Statistic
+                                title="Kết quả lọc"
+                                value={filteredSpecialties.length}
+                                prefix={<SearchOutlined />}
+                            />
+                            <p>Số chuyên khoa đang hiển thị.</p>
+                        </Card>
+                    </section>
+
+                    <Card
+                        className={styles.detailCard}
+                        title="Danh sách chuyên khoa"
+                        extra={
+                            <Button
+                                type="primary"
+                                icon={<PlusOutlined />}
+                                onClick={openCreate}
+                            >
+                                Tạo chuyên khoa
+                            </Button>
+                        }
+                    >
+                        <div className={styles.toolbar}>
+                            <Input
+                                allowClear
+                                prefix={<SearchOutlined />}
+                                placeholder="Tìm theo tên, mã hoặc mô tả"
+                                value={keyword}
+                                onChange={(event) =>
+                                    setKeyword(event.target.value)
+                                }
+                            />
+
+                            <Button
+                                icon={<ReloadOutlined />}
+                                onClick={() => {
+                                    setKeyword('');
+                                    loadSpecialties();
+                                }}
+                            >
+                                Làm mới
+                            </Button>
+                        </div>
+
+                        <Table
+                            rowKey="id"
+                            loading={loading}
+                            columns={columns}
+                            dataSource={filteredSpecialties}
+                            pagination={{
+                                pageSize: 10,
+                                showSizeChanger: false,
+                            }}
+                            scroll={{ x: 920 }}
+                        />
+                    </Card>
+                </div>
+
+                <Drawer
+                    title="Chi tiết chuyên khoa"
+                    open={openDetailDrawer}
+                    width={560}
+                    onClose={() => setOpenDetailDrawer(false)}
+                    extra={
+                        selectedSpecialty && (
+                            <Button
+                                type="primary"
+                                icon={<EditOutlined />}
+                                onClick={() => openEdit(selectedSpecialty)}
+                            >
+                                Chỉnh sửa
+                            </Button>
+                        )
+                    }
+                >
+                    {selectedSpecialty && (
+                        <Descriptions
+                            bordered
+                            column={1}
+                            size="small"
+                            title="Thông tin chuyên khoa"
+                        >
+                            <Descriptions.Item label="Tên chuyên khoa">
+                                {selectedSpecialty.name}
+                            </Descriptions.Item>
+
+                            <Descriptions.Item label="Mã chuyên khoa">
+                                <Tag color="cyan">{selectedSpecialty.code}</Tag>
+                            </Descriptions.Item>
+
+                            <Descriptions.Item label="Mô tả">
+                                {selectedSpecialty.description ||
+                                    'Chưa cập nhật'}
+                            </Descriptions.Item>
+
+                            <Descriptions.Item label="Ngày tạo">
+                                {formatDateTime(selectedSpecialty.createdAt)}
+                            </Descriptions.Item>
+
+                            <Descriptions.Item label="Cập nhật gần nhất">
+                                {formatDateTime(selectedSpecialty.updatedAt)}
+                            </Descriptions.Item>
+                        </Descriptions>
+                    )}
+                </Drawer>
 
                 <Modal
                     title={
                         editingSpecialty
-                            ? 'Cập nhật chuyên khoa'
-                            : 'Tạo chuyên khoa'
+                            ? 'Chỉnh sửa chuyên khoa'
+                            : 'Tạo chuyên khoa mới'
                     }
-                    open={modalOpen}
+                    open={openFormModal}
                     onCancel={() => {
-                        setModalOpen(false);
+                        setOpenFormModal(false);
                         setEditingSpecialty(null);
-                        form.resetFields();
                     }}
                     footer={null}
                     destroyOnClose
                 >
-                    <Form form={form} layout="vertical" onFinish={handleSubmit}>
+                    <Form
+                        form={form}
+                        layout="vertical"
+                        onFinish={handleSubmit}
+                        requiredMark={false}
+                    >
                         <Form.Item
                             label="Mã chuyên khoa"
                             name="code"
                             rules={[
                                 {
                                     required: true,
-                                    message: 'Nhập mã chuyên khoa',
+                                    message: 'Vui lòng nhập mã chuyên khoa.',
+                                },
+                                {
+                                    max: 50,
+                                    message: 'Mã chuyên khoa tối đa 50 ký tự.',
                                 },
                             ]}
-                            extra="Ví dụ: CARDIOLOGY, DERMATOLOGY. Hệ thống sẽ tự chuyển thành chữ hoa."
+                            extra="Ví dụ: CARDIOLOGY, DERMATOLOGY, PEDIATRICS"
                         >
-                            <Input placeholder="CARDIOLOGY" />
+                            <Input
+                                placeholder="VD: CARDIOLOGY"
+                                onChange={(event) => {
+                                    form.setFieldValue(
+                                        'code',
+                                        event.target.value.toUpperCase(),
+                                    );
+                                }}
+                            />
                         </Form.Item>
 
                         <Form.Item
@@ -387,17 +529,30 @@ export default function AdminSpecialtiesPage() {
                             rules={[
                                 {
                                     required: true,
-                                    message: 'Nhập tên chuyên khoa',
+                                    message: 'Vui lòng nhập tên chuyên khoa.',
+                                },
+                                {
+                                    max: 150,
+                                    message: 'Tên chuyên khoa tối đa 150 ký tự.',
                                 },
                             ]}
                         >
-                            <Input placeholder="Tim mạch" />
+                            <Input placeholder="VD: Tim mạch" />
                         </Form.Item>
 
-                        <Form.Item label="Mô tả" name="description">
+                        <Form.Item
+                            label="Mô tả"
+                            name="description"
+                            rules={[
+                                {
+                                    max: 1000,
+                                    message: 'Mô tả tối đa 1000 ký tự.',
+                                },
+                            ]}
+                        >
                             <Input.TextArea
                                 rows={4}
-                                placeholder="Khám và điều trị bệnh lý tim mạch..."
+                                placeholder="Mô tả ngắn giúp bệnh nhân hiểu chuyên khoa này phù hợp với vấn đề sức khỏe nào..."
                             />
                         </Form.Item>
 
@@ -407,7 +562,9 @@ export default function AdminSpecialtiesPage() {
                             loading={saving}
                             block
                         >
-                            {editingSpecialty ? 'Lưu thay đổi' : 'Tạo mới'}
+                            {editingSpecialty
+                                ? 'Lưu thay đổi'
+                                : 'Tạo chuyên khoa'}
                         </Button>
                     </Form>
                 </Modal>
