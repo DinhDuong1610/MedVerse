@@ -216,20 +216,20 @@ const NAV_ITEMS: NavItem[] = [
         anyRoles: ['ADMIN'],
         anyPermissions: ['INVENTORY:WRITE'],
     },
-    {
-        label: 'Giám sát hệ thống',
-        href: '/dashboard/admin/system',
-        icon: <AppstoreOutlined />,
-        anyRoles: ['ADMIN'],
-        anyPermissions: ['ADMIN_PANEL:ACCESS'],
-    },
-    {
-        label: 'Audit Logs',
-        href: '/dashboard/admin/audit-logs',
-        icon: <FileProtectOutlined />,
-        anyRoles: ['ADMIN'],
-        anyPermissions: ['AUDIT:READ'],
-    },
+    // {
+    //     label: 'Giám sát hệ thống',
+    //     href: '/dashboard/admin/system',
+    //     icon: <AppstoreOutlined />,
+    //     anyRoles: ['ADMIN'],
+    //     anyPermissions: ['ADMIN_PANEL:ACCESS'],
+    // },
+    // {
+    //     label: 'Audit Logs',
+    //     href: '/dashboard/admin/audit-logs',
+    //     icon: <FileProtectOutlined />,
+    //     anyRoles: ['ADMIN'],
+    //     anyPermissions: ['AUDIT:READ'],
+    // },
 ];
 
 type Props = {

@@ -871,7 +871,7 @@ export default function DoctorClinicalCasePage({ params }: PageProps) {
                                         </Button>
                                     )}
 
-                                    <Button
+                                    {/* <Button
                                         icon={<ReloadOutlined />}
                                         onClick={loadCase}
                                         loading={loading}
@@ -884,7 +884,7 @@ export default function DoctorClinicalCasePage({ params }: PageProps) {
                                         onClick={() => setPatientInfoOpen(true)}
                                     >
                                         Hồ sơ sức khỏe
-                                    </Button>
+                                    </Button> */}
                                 </Space>
                             </div>
 

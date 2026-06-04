@@ -1,6 +1,17 @@
-# MedVerse Demo Seed Kit
+# MedVerse Rich Demo Seed Kit
 
-Bộ file này dùng để tạo nhánh demo và seed lại dữ liệu demo ổn định trước khi thuyết trình.
+Bộ seed này dùng cho nhánh demo/local. Không cần chỉnh GitHub trực tiếp.
+
+## Nội dung đã được nâng cấp
+
+- Giữ 4 tài khoản chính: Admin, bác sĩ, lễ tân, bệnh nhân.
+- Thêm 4 bệnh nhân phụ để bảng lịch khám, ca khám, bệnh án và đơn thuốc có dữ liệu sinh động.
+- Thêm nhiều slot làm việc: còn trống, đã đặt, đã hủy, hôm nay, ngày mai, quá khứ.
+- Thêm nhiều appointment request: pending, approved, rejected, cancelled.
+- Thêm nhiều appointment: scheduled, confirmed/đang chờ khám, completed, cancelled, no-show.
+- Thêm bệnh án: draft, completed, cancelled.
+- Thêm đơn thuốc: draft, finalized, có cảnh báo an toàn mức LOW/MEDIUM/HIGH.
+- Import toàn bộ thuốc ATC/AI và tăng tồn kho tối thiểu lên khoảng 1500+ để bác sĩ kê đơn thoải mái.
 
 ## Tài khoản chính
 
@@ -9,74 +20,67 @@ Bộ file này dùng để tạo nhánh demo và seed lại dữ liệu demo ổ
 | Admin | `admin@medverse.vn` | `Admin@123456` |
 | Bác sĩ | `doctor.demo@medverse.vn` | `Doctor@123456` |
 | Lễ tân | `receptionist.demo@medverse.vn` | `Receptionist@123456` |
-| Bệnh nhân | `patient.demo@medverse.vn` | `Patient@123456` |
+| Bệnh nhân chính | `patient.demo@medverse.vn` | `Patient@123456` |
 
-## File chính
+## Bệnh nhân phụ
+
+Các tài khoản này dùng để dữ liệu bác sĩ/lễ tân đa dạng hơn. Nếu cần đăng nhập thử, dùng cùng mật khẩu `Patient@123456`.
+
+| Bệnh nhân | Email | Nội dung demo |
+|---|---|---|
+| Nguyễn Thị Mai | `patient.mai@medverse.vn` | Viêm mũi dị ứng, đơn nháp |
+| Phạm Anh Khoa | `patient.khoa@medverse.vn` | Tăng huyết áp, đơn đã hoàn tất |
+| Trần Minh Đức | `patient.duc@medverse.vn` | Ca sắp khám/chưa khám |
+| Hoàng Bảo Ngọc | `patient.ngoc@medverse.vn` | Hen nhẹ, lịch đã hủy, dị ứng Penicillin |
+
+## Thứ tự SQL
 
 ```text
-seed-data/sql/02_ai_medications_from_atc.sql   # import toàn bộ thuốc ATC/AI vào kho
-seed-data/sql/01_demo_reset_core.sql           # reset tài khoản + dữ liệu nghiệp vụ demo
-seed-data/data/atc_metadata_with_profiles.json # dữ liệu AI gốc
-seed-data/data/ATC-clean-final.csv             # dataset AI gốc dạng CSV
+seed-data/sql/02_ai_medications_from_atc.sql      # import thuốc AI + tăng tồn kho
+seed-data/sql/01_demo_reset_core.sql              # reset tài khoản chính + dữ liệu lõi
+seed-data/sql/03_rich_demo_clinical_data.sql      # thêm dữ liệu lâm sàng dồi dào
 ```
 
-## Cách tạo nhánh demo local
+## Chạy reset trước demo
 
-```bash
-git checkout main
-git pull
-git checkout -b demo/seed-data
-mkdir -p seed-data
-# copy toàn bộ thư mục seed-data trong kit này vào root project
-```
-
-## Cách chạy reset sạch nhất trước demo
-
-Cách chắc chắn nhất là xóa volume database rồi build lại:
+Cách sạch nhất:
 
 ```bash
 docker compose down -v
 docker compose up --build -d
 ```
 
-Sau khi backend đã migrate xong, chạy seed:
+Sau khi backend migrate xong:
 
 ```bash
-# Cách 1: nếu đã copy docker-compose.demo-seed.yml vào seed-data
 docker compose -f docker-compose.yml -f seed-data/docker-compose.demo-seed.yml run --rm demo-seed
 ```
 
-Hoặc chạy trực tiếp trong container postgres, chỉnh user/db nếu project dùng tên khác:
+Windows PowerShell:
 
-```bash
-docker compose cp seed-data/sql/02_ai_medications_from_atc.sql postgres:/tmp/02_ai_medications_from_atc.sql
-docker compose cp seed-data/sql/01_demo_reset_core.sql postgres:/tmp/01_demo_reset_core.sql
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/02_ai_medications_from_atc.sql
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/01_demo_reset_core.sql
+```powershell
+powershell -ExecutionPolicy Bypass -File seed-data/scripts/reset-demo-seed.ps1
 ```
 
-## Vì sao import thuốc trước core seed?
-
-`01_demo_reset_core.sql` có tạo sẵn đơn thuốc mẫu và cố gắng liên kết thuốc `N02BE01` và `R05CB01` từ bảng `medications` nếu tìm được. Vì vậy nên chạy import thuốc trước.
-
-## Reset lại trước mỗi lần demo
-
-Không cần build lại code. Chạy lại 2 SQL này là dữ liệu demo trở về trạng thái ban đầu:
+Linux/macOS/Git Bash:
 
 ```bash
-psql -f seed-data/sql/02_ai_medications_from_atc.sql
-psql -f seed-data/sql/01_demo_reset_core.sql
+bash seed-data/scripts/reset-demo-seed.sh
 ```
 
-## Lưu ý quan trọng
+## Màn hình sẽ có dữ liệu ngay
+
+- `/dashboard/receptionist/requests`: có nhiều yêu cầu chờ duyệt, đã duyệt, bị từ chối, đã hủy.
+- `/dashboard/receptionist/appointments`: có ca confirmed, scheduled, completed, cancelled, no-show.
+- `/dashboard/doctor/work-slots`: có slot hôm nay/ngày mai, available/booked/cancelled.
+- `/dashboard/doctor/cases`: mặc định hôm nay có ca đang chờ khám, ca đang khám, ca hoàn tất, ca hủy, no-show.
+- `/dashboard/doctor/medical-records`: có bệnh án nháp, hoàn tất, hủy.
+- `/dashboard/doctor/prescriptions`: có đơn nháp, đơn hoàn tất, đơn có cảnh báo an toàn.
+- `/dashboard/patient`: tài khoản `patient.demo@medverse.vn` có request, appointment, bệnh án và đơn thuốc.
+
+## Lưu ý
 
 - Bộ seed không thay đổi cấu trúc bảng.
-- SQL có helper tự kiểm tra bảng/cột tồn tại rồi mới insert để giảm lỗi lệch schema.
-- Nếu project của bạn có cột `NOT NULL` mới mà không có default và không có trong seed, PostgreSQL vẫn có thể báo lỗi. Khi đó gửi lỗi cho ChatGPT để bổ sung key vào JSON seed.
-- Không commit thẳng lên `main`. Hãy commit trên nhánh `demo/seed-data` trước.
-
-## Thống kê thuốc AI
-
-- Metadata AI: 1306 ATC profiles.
-- CSV gốc: 2903 dòng.
-- SQL import: 1305 thuốc/kho tương ứng ATC profile.
+- SQL dùng helper tự kiểm tra bảng/cột tồn tại rồi mới insert.
+- Nếu schema thực tế có thêm cột `NOT NULL` không có default, PostgreSQL có thể báo lỗi. Khi đó gửi lỗi cho mình để bổ sung field đúng schema.
+- Vì dùng Docker volume, muốn reset sạch tuyệt đối trước buổi demo thì dùng `docker compose down -v` rồi seed lại.

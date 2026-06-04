@@ -23,4 +23,6 @@ services:
        psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -v ON_ERROR_STOP=1 -f /seed-data/sql/02_ai_medications_from_atc.sql &&
        echo 'Reset core demo data...' &&
        psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -v ON_ERROR_STOP=1 -f /seed-data/sql/01_demo_reset_core.sql &&
-       echo 'Done: MedVerse demo seed restored.'"
+       echo 'Seed rich clinical demo data...' &&
+       psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -v ON_ERROR_STOP=1 -f /seed-data/sql/03_rich_demo_clinical_data.sql &&
+       echo 'Done: MedVerse rich demo seed restored.'"

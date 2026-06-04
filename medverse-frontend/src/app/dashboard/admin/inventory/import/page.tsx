@@ -305,13 +305,13 @@ export default function AdminStockImportPage() {
                                 trình kê đơn.
                             </p>
 
-                            <div style={{ marginTop: 24 }}>
+                            {/* <div style={{ marginTop: 24 }}>
                                 <Link href="/dashboard/admin/inventory">
                                     <Button icon={<ArrowLeftOutlined />}>
                                         Quay lại kho thuốc
                                     </Button>
                                 </Link>
-                            </div>
+                            </div> */}
                         </div>
 
                         <div className={styles.pulseCard}>

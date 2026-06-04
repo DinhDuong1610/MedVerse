@@ -312,13 +312,13 @@ export default function AdminAccessControlPage() {
                     </Card>
                 </section>
 
-                <Alert
+                {/* <Alert
                     type="warning"
                     showIcon
                     style={{ marginTop: 24 }}
                     message="Lưu ý khi thay đổi quyền"
                     description="Backend sẽ áp dụng quyền theo role. Tuy nhiên frontend đang lưu permissions trong session, vì vậy người dùng đã đăng nhập có thể cần đăng xuất và đăng nhập lại để menu và giao diện cập nhật đầy đủ."
-                />
+                /> */}
 
                 {error && (
                     <Alert
@@ -447,7 +447,7 @@ export default function AdminAccessControlPage() {
                                             </p>
                                         </div>
 
-                                        <Input.Search
+                                        {/* <Input.Search
                                             allowClear
                                             placeholder="Tìm mã quyền, mô tả, nhóm..."
                                             value={keyword}
@@ -455,7 +455,7 @@ export default function AdminAccessControlPage() {
                                                 setKeyword(event.target.value)
                                             }
                                             style={{ width: 300 }}
-                                        />
+                                        /> */}
                                     </div>
 
                                     {Object.entries(permissionGroups).map(
