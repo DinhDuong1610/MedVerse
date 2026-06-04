@@ -709,18 +709,6 @@ export default function DoctorPrescriptionsPage() {
                                 >
                                     Làm mới
                                 </Button>
-
-                                <Link href="/dashboard/doctor/cases">
-                                    <Button icon={<CheckCircleOutlined />}>
-                                        Bảng ca khám
-                                    </Button>
-                                </Link>
-
-                                <Link href="/dashboard/doctor/appointments">
-                                    <Button icon={<CalendarOutlined />}>
-                                        Lịch khám
-                                    </Button>
-                                </Link>
                             </Space>
                         </div>
 
