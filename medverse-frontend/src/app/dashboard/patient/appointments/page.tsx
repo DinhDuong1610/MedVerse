@@ -1,16 +1,25 @@
 'use client';
 
 import {
-    Alert,
+    CalendarOutlined,
+    CheckCircleOutlined,
+    ClockCircleOutlined,
+    EyeOutlined,
+    FileProtectOutlined,
+    MedicineBoxOutlined,
+    ReloadOutlined,
+    SearchOutlined,
+    VideoCameraOutlined,
+    WarningOutlined,
+} from '@ant-design/icons';
+import {
     Button,
-    Card,
-    Collapse,
-    Modal,
+    Descriptions,
+    Drawer,
+    Input,
+    Select,
     Space,
-    Statistic,
     Tag,
-    Timeline,
-    message,
 } from 'antd';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -19,127 +28,237 @@ import PatientPortalFrame from '../../_components/PatientPortalFrame';
 import StatusTag from '../../_components/StatusTag';
 import { hasRole } from '@/lib/auth/roles';
 import { useAuthSession } from '@/lib/auth/use-auth-session';
-import {
-    cancelAppointment,
-    getMyAppointments,
-} from '@/services/appointment.service';
+import { getMyAppointments } from '@/services/appointment.service';
 import type { Appointment } from '@/types/clinical';
 import styles from '../../_components/patient-portal.module.scss';
 
-function formatDateTime(value?: string) {
-    if (!value) return 'Chưa rõ';
+type PatientAppointmentView = Appointment & {
+    appointmentDate?: string;
+    appointmentTime?: string;
+    date?: string;
+    time?: string;
+    startTime?: string;
+    endTime?: string;
+    scheduledAt?: string;
 
-    return new Date(value).toLocaleString('vi-VN');
+    doctorName?: string;
+    doctorEmail?: string;
+    specialtyName?: string;
+
+    type?: string;
+    roomName?: string;
+    location?: string;
+    meetingUrl?: string;
+
+    reason?: string;
+    symptoms?: string;
+    note?: string;
+
+    medicalRecordId?: string;
+    prescriptionId?: string;
+
+    cancellationReason?: string;
+    cancelReason?: string;
+
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+const statusOptions = [
+    {
+        label: 'Tất cả lịch hẹn',
+        value: 'ALL',
+    },
+    {
+        label: 'Đã lên lịch',
+        value: 'SCHEDULED',
+    },
+    {
+        label: 'Đã xác nhận',
+        value: 'CONFIRMED',
+    },
+    {
+        label: 'Đã hoàn thành',
+        value: 'COMPLETED',
+    },
+    {
+        label: 'Đã hủy',
+        value: 'CANCELLED',
+    },
+    {
+        label: 'Không đến khám',
+        value: 'NO_SHOW',
+    },
+];
+
+function normalizeKeyword(value?: string) {
+    return String(value || '')
+        .trim()
+        .toLowerCase();
 }
 
-function formatTime(value?: string) {
-    if (!value) return 'Chưa rõ';
+function formatDate(value?: string) {
+    if (!value) return 'Chưa ghi nhận';
 
-    return new Date(value).toLocaleTimeString('vi-VN');
-}
+    const date = new Date(value);
 
-function isUpcomingAppointment(appointment: Appointment) {
-    const appointmentEnd = appointment.endTime
-        ? new Date(appointment.endTime).getTime()
-        : 0;
-
-    return (
-        ['SCHEDULED', 'CONFIRMED'].includes(appointment.status) &&
-        appointmentEnd >= Date.now()
-    );
-}
-
-function isHistoryAppointment(appointment: Appointment) {
-    const appointmentEnd = appointment.endTime
-        ? new Date(appointment.endTime).getTime()
-        : 0;
-
-    return (
-        ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(appointment.status) ||
-        appointmentEnd < Date.now()
-    );
-}
-
-function canCancelAppointment(appointment: Appointment) {
-    return ['SCHEDULED', 'CONFIRMED'].includes(appointment.status);
-}
-
-function getPatientStatusInfo(appointment: Appointment) {
-    switch (appointment.status) {
-        case 'SCHEDULED':
-            return {
-                type: 'info' as const,
-                title: 'Lịch hẹn đã được tạo',
-                description:
-                    'Bạn nên đến đúng giờ. Nếu không thể tham gia, hãy hủy lịch sớm để phòng khám sắp xếp lại.',
-            };
-
-        case 'CONFIRMED':
-            return {
-                type: 'success' as const,
-                title: 'Lịch hẹn đã được xác nhận',
-                description:
-                    'Lịch khám đã được xác nhận. Hãy chuẩn bị giấy tờ cần thiết và đến đúng giờ.',
-            };
-
-        case 'COMPLETED':
-            return {
-                type: 'success' as const,
-                title: 'Ca khám đã hoàn tất',
-                description:
-                    'Bạn có thể xem kết quả khám và đơn thuốc trong khu vực hồ sơ y tế.',
-            };
-
-        case 'CANCELLED':
-            return {
-                type: 'warning' as const,
-                title: 'Lịch hẹn đã bị hủy',
-                description:
-                    'Lịch hẹn này không còn hiệu lực. Bạn có thể đặt lịch khám mới nếu cần.',
-            };
-
-        case 'NO_SHOW':
-            return {
-                type: 'warning' as const,
-                title: 'Không đến khám',
-                description:
-                    'Lịch hẹn được ghi nhận là không đến khám. Hãy đặt lịch mới nếu vẫn cần tư vấn.',
-            };
-
-        default:
-            return {
-                type: 'info' as const,
-                title: 'Trạng thái lịch hẹn',
-                description: 'Theo dõi trạng thái lịch hẹn của bạn tại đây.',
-            };
+    if (Number.isNaN(date.getTime())) {
+        return value;
     }
+
+    return date.toLocaleDateString('vi-VN');
+}
+
+function formatDateTime(value?: string) {
+    if (!value) return 'Chưa ghi nhận';
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString('vi-VN');
+}
+
+function getAppointmentStart(appointment: PatientAppointmentView) {
+    return (
+        appointment.startTime ||
+        appointment.scheduledAt ||
+        appointment.appointmentDate ||
+        appointment.date
+    );
+}
+
+function getAppointmentEnd(appointment: PatientAppointmentView) {
+    return appointment.endTime;
+}
+
+function getAppointmentTimeLabel(appointment: PatientAppointmentView) {
+    const start = getAppointmentStart(appointment);
+
+    if (appointment.appointmentDate || appointment.date) {
+        const date = formatDate(appointment.appointmentDate || appointment.date);
+        const time =
+            appointment.appointmentTime ||
+            appointment.time ||
+            appointment.startTime ||
+            'Chưa ghi nhận giờ';
+
+        return `${date} · ${time}`;
+    }
+
+    if (start) {
+        return formatDateTime(start);
+    }
+
+    return 'Chưa ghi nhận thời gian';
+}
+
+function getAppointmentTitle(appointment: PatientAppointmentView) {
+    if (appointment.specialtyName && appointment.doctorName) {
+        return `${appointment.specialtyName} · ${appointment.doctorName}`;
+    }
+
+    return (
+        appointment.specialtyName ||
+        appointment.doctorName ||
+        appointment.reason ||
+        'Lịch hẹn khám'
+    );
+}
+
+function getAppointmentDescription(appointment: PatientAppointmentView) {
+    return (
+        appointment.symptoms ||
+        appointment.reason ||
+        appointment.note ||
+        'Chưa có mô tả chi tiết cho lịch hẹn này.'
+    );
+}
+
+function getAppointmentPlace(appointment: PatientAppointmentView) {
+    if (appointment.type === 'ONLINE') {
+        return 'Khám trực tuyến';
+    }
+
+    return (
+        appointment.roomName ||
+        appointment.location ||
+        'Phòng khám sẽ cập nhật địa điểm'
+    );
+}
+
+function isUpcomingAppointment(appointment: PatientAppointmentView) {
+    const status = String(appointment.status || '').toUpperCase();
+
+    return ['SCHEDULED', 'CONFIRMED'].includes(status);
+}
+
+function isCompletedAppointment(appointment: PatientAppointmentView) {
+    return String(appointment.status || '').toUpperCase() === 'COMPLETED';
+}
+
+function isProblemAppointment(appointment: PatientAppointmentView) {
+    return ['CANCELLED', 'NO_SHOW'].includes(
+        String(appointment.status || '').toUpperCase(),
+    );
+}
+
+function getStatusIcon(status?: string) {
+    const normalized = String(status || '').toUpperCase();
+
+    if (normalized === 'COMPLETED') return <CheckCircleOutlined />;
+    if (normalized === 'CANCELLED' || normalized === 'NO_SHOW') {
+        return <WarningOutlined />;
+    }
+
+    return <ClockCircleOutlined />;
+}
+
+function getStatusColor(status?: string) {
+    const normalized = String(status || '').toUpperCase();
+
+    if (normalized === 'COMPLETED') return '#16a34a';
+    if (normalized === 'CANCELLED' || normalized === 'NO_SHOW') return '#ef4444';
+    if (normalized === 'CONFIRMED') return '#2563eb';
+
+    return '#7c3aed';
 }
 
 export default function PatientAppointmentsPage() {
     const { session, loading: authLoading } = useAuthSession();
 
-    const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [appointments, setAppointments] = useState<PatientAppointmentView[]>(
+        [],
+    );
+    const [keyword, setKeyword] = useState('');
+    const [status, setStatus] = useState('ALL');
+
     const [loading, setLoading] = useState(true);
-    const [cancellingId, setCancellingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const [selectedAppointment, setSelectedAppointment] =
+        useState<PatientAppointmentView | null>(null);
+    const [openDetailDrawer, setOpenDetailDrawer] = useState(false);
 
     const loadAppointments = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            const page = await getMyAppointments(100);
+            const result = await getMyAppointments();
 
-            const sorted = [...(page.content || [])].sort((a, b) =>
-                String(a.startTime).localeCompare(String(b.startTime)),
-            );
+            const content = Array.isArray(result)
+                ? result
+                : result?.content || [];
 
-            setAppointments(sorted);
+            setAppointments(content as PatientAppointmentView[]);
         } catch (err) {
             setError(
                 err instanceof Error
                     ? err.message
-                    : 'Không thể tải lịch hẹn của bạn.',
+                    : 'Không thể tải danh sách lịch hẹn.',
             );
         } finally {
             setLoading(false);
@@ -156,82 +275,65 @@ export default function PatientAppointmentsPage() {
         }
 
         loadAppointments();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
-    const upcoming = useMemo(
-        () => appointments.filter(isUpcomingAppointment),
-        [appointments],
-    );
+    const filteredAppointments = useMemo(() => {
+        const search = normalizeKeyword(keyword);
 
-    const history = useMemo(
-        () => appointments.filter(isHistoryAppointment).reverse(),
-        [appointments],
-    );
+        return appointments.filter((appointment) => {
+            const appointmentStatus = String(
+                appointment.status || '',
+            ).toUpperCase();
+
+            const matchStatus =
+                status === 'ALL' || appointmentStatus === status;
+
+            const matchKeyword =
+                !search ||
+                appointment.doctorName?.toLowerCase().includes(search) ||
+                appointment.specialtyName?.toLowerCase().includes(search) ||
+                appointment.reason?.toLowerCase().includes(search) ||
+                appointment.symptoms?.toLowerCase().includes(search) ||
+                appointment.note?.toLowerCase().includes(search) ||
+                appointment.type?.toLowerCase().includes(search);
+
+            return matchStatus && matchKeyword;
+        });
+    }, [appointments, keyword, status]);
 
     const metrics = useMemo(() => {
-        const scheduled = appointments.filter(
-            (item) => item.status === 'SCHEDULED',
-        ).length;
-
-        const confirmed = appointments.filter(
-            (item) => item.status === 'CONFIRMED',
-        ).length;
-
-        const completed = appointments.filter(
-            (item) => item.status === 'COMPLETED',
-        ).length;
-
-        const cancelled = appointments.filter(
-            (item) => item.status === 'CANCELLED',
-        ).length;
-
-        const noShow = appointments.filter(
-            (item) => item.status === 'NO_SHOW',
-        ).length;
+        const upcoming = appointments.filter(isUpcomingAppointment).length;
+        const completed = appointments.filter(isCompletedAppointment).length;
+        const problem = appointments.filter(isProblemAppointment).length;
 
         return {
             total: appointments.length,
-            upcoming: upcoming.length,
-            history: history.length,
-            scheduled,
-            confirmed,
+            upcoming,
             completed,
-            cancelled,
-            noShow,
+            problem,
         };
-    }, [appointments, upcoming.length, history.length]);
+    }, [appointments]);
 
-    const handleCancel = async (appointment: Appointment) => {
-        Modal.confirm({
-            title: 'Hủy lịch hẹn?',
-            content:
-                'Lịch hẹn sau khi hủy sẽ không còn hiệu lực. Bạn có thể gửi yêu cầu đặt lịch mới nếu cần.',
-            okText: 'Hủy lịch hẹn',
-            cancelText: 'Đóng',
-            okButtonProps: { danger: true },
-            onOk: async () => {
-                try {
-                    setCancellingId(appointment.id);
+    const upcomingAppointments = useMemo(() => {
+        return appointments
+            .filter(isUpcomingAppointment)
+            .sort((a, b) => {
+                const timeA = new Date(getAppointmentStart(a) || 0).getTime();
+                const timeB = new Date(getAppointmentStart(b) || 0).getTime();
 
-                    await cancelAppointment(
-                        appointment.id,
-                        'Patient cancelled from MedVerse patient portal.',
-                    );
+                return timeA - timeB;
+            })
+            .slice(0, 3);
+    }, [appointments]);
 
-                    message.success('Đã hủy lịch hẹn.');
-                    await loadAppointments();
-                } catch (err) {
-                    message.error(
-                        err instanceof Error
-                            ? err.message
-                            : 'Không thể hủy lịch hẹn.',
-                    );
-                } finally {
-                    setCancellingId(null);
-                }
-            },
-        });
+    const openDetail = (appointment: PatientAppointmentView) => {
+        setSelectedAppointment(appointment);
+        setOpenDetailDrawer(true);
+    };
+
+    const handleReset = () => {
+        setKeyword('');
+        setStatus('ALL');
     };
 
     if (authLoading || !session) {
@@ -242,271 +344,434 @@ export default function PatientAppointmentsPage() {
         <PatientPortalFrame session={session}>
             <section className={styles.hero}>
                 <div>
-                    <div className={styles.heroKicker}>Appointments</div>
-                    <h1 className={styles.heroTitle}>Lịch hẹn của tôi</h1>
+                    <div className={styles.heroKicker}>Lịch hẹn của tôi</div>
+                    <h1 className={styles.heroTitle}>
+                        Theo dõi các lịch khám đã được xác nhận
+                    </h1>
                     <p className={styles.heroDescription}>
-                        Theo dõi lịch khám đã được xác nhận, trạng thái từng
-                        cuộc hẹn và xem kết quả sau khi bác sĩ hoàn tất khám.
+                        Những yêu cầu đặt lịch sau khi được lễ tân duyệt sẽ trở
+                        thành lịch hẹn chính thức và được hiển thị tại đây.
                     </p>
+
+                    <Space wrap style={{ marginTop: 20 }}>
+                        <Link href="/dashboard/patient/book-appointment">
+                            <Button type="primary" icon={<CalendarOutlined />}>
+                                Đặt lịch mới
+                            </Button>
+                        </Link>
+
+                        <Link href="/dashboard/patient/appointment-requests">
+                            <Button>Yêu cầu đặt lịch</Button>
+                        </Link>
+                    </Space>
                 </div>
 
                 <article className={styles.heroCard}>
-                    <span>Lịch sắp tới</span>
+                    <span>Lịch hẹn sắp tới</span>
                     <strong>{metrics.upcoming}</strong>
                     <p>
-                        Lịch SCHEDULED hoặc CONFIRMED sẽ hiển thị trong nhóm sắp
-                        tới.
+                        Hãy kiểm tra thời gian, hình thức khám và thông tin bác
+                        sĩ trước buổi hẹn.
                     </p>
                 </article>
             </section>
 
-            <section className={styles.contentGrid}>
-                <Card className={styles.portalPanel} style={{ marginTop: 24 }}>
-                    <Statistic title="Tổng lịch" value={metrics.total} />
-                </Card>
-
-                <Card className={styles.portalPanel} style={{ marginTop: 24 }}>
-                    <Statistic title="Đã xác nhận" value={metrics.confirmed} />
-                </Card>
-
-                <Card className={styles.portalPanel} style={{ marginTop: 24 }}>
-                    <Statistic title="Đã hoàn tất" value={metrics.completed} />
-                </Card>
-            </section>
-
-            <section className={styles.contentGrid} style={{ marginTop: 24 }}>
-                <article className={styles.portalPanel}>
-                    <div className={styles.panelHeader}>
-                        <div>
-                            <span>Upcoming</span>
-                            <h2>Lịch khám sắp tới</h2>
-                            <p>
-                                Hãy đến đúng giờ. Nếu không thể tham gia, bạn nên
-                                hủy lịch sớm để phòng khám hỗ trợ sắp xếp lại.
-                            </p>
-                        </div>
+            <section
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                    gap: 16,
+                    marginTop: 24,
+                }}
+            >
+                <article className={styles.listCard}>
+                    <div className={styles.listTitle}>
+                        <strong>Tổng lịch hẹn</strong>
+                        <Tag color="blue">{metrics.total}</Tag>
                     </div>
-
-                    <ClinicalPageState
-                        loading={loading}
-                        error={error}
-                        empty={upcoming.length === 0}
-                        emptyTitle="Chưa có lịch hẹn sắp tới"
-                        emptyDescription="Sau khi lễ tân duyệt yêu cầu, lịch hẹn sẽ xuất hiện tại đây."
-                        actionText="Đặt lịch khám"
-                        actionHref="/dashboard/patient/book-appointment"
-                    >
-                        <Timeline
-                            items={upcoming.map((appointment) => {
-                                const statusInfo =
-                                    getPatientStatusInfo(appointment);
-
-                                return {
-                                    color:
-                                        appointment.status === 'CONFIRMED'
-                                            ? 'green'
-                                            : 'blue',
-                                    children: (
-                                        <article className={styles.listCard}>
-                                            <div className={styles.listTitle}>
-                                                <strong>
-                                                    {formatDateTime(
-                                                        appointment.startTime,
-                                                    )}
-                                                </strong>
-
-                                                <Space wrap>
-                                                    <StatusTag
-                                                        value={
-                                                            appointment.status
-                                                        }
-                                                    />
-
-                                                    <Tag color="cyan">
-                                                        {appointment.type ||
-                                                            'OFFLINE'}
-                                                    </Tag>
-                                                </Space>
-                                            </div>
-
-                                            <Alert
-                                                type={statusInfo.type}
-                                                showIcon
-                                                message={statusInfo.title}
-                                                description={
-                                                    statusInfo.description
-                                                }
-                                                style={{ marginBottom: 14 }}
-                                            />
-
-                                            <p className={styles.muted}>
-                                                Bác sĩ:{' '}
-                                                <b>
-                                                    {appointment.doctorName ||
-                                                        'Chưa rõ bác sĩ'}
-                                                </b>
-                                            </p>
-
-                                            <p className={styles.muted}>
-                                                Thời gian:{' '}
-                                                <b>
-                                                    {formatDateTime(
-                                                        appointment.startTime,
-                                                    )}
-                                                </b>{' '}
-                                                →{' '}
-                                                {formatTime(
-                                                    appointment.endTime,
-                                                )}
-                                            </p>
-
-                                            <p className={styles.muted}>
-                                                Hình thức khám:{' '}
-                                                <b>
-                                                    {appointment.type ||
-                                                        'OFFLINE'}
-                                                </b>
-                                            </p>
-
-                                            <Space wrap>
-                                                <Button
-                                                    danger
-                                                    disabled={
-                                                        !canCancelAppointment(
-                                                            appointment,
-                                                        )
-                                                    }
-                                                    loading={
-                                                        cancellingId ===
-                                                        appointment.id
-                                                    }
-                                                    onClick={() =>
-                                                        handleCancel(appointment)
-                                                    }
-                                                >
-                                                    Hủy lịch hẹn
-                                                </Button>
-                                            </Space>
-                                        </article>
-                                    ),
-                                };
-                            })}
-                        />
-                    </ClinicalPageState>
+                    <p className={styles.muted}>
+                        Toàn bộ lịch hẹn chính thức của bạn.
+                    </p>
                 </article>
 
-                <article className={styles.portalPanel}>
-                    <div className={styles.panelHeader}>
-                        <div>
-                            <span>History</span>
-                            <h2>Lịch sử lịch hẹn</h2>
-                            <p>
-                                Các lịch đã hoàn tất, đã hủy hoặc no-show sẽ
-                                hiển thị ở đây.
-                            </p>
-                        </div>
+                <article className={styles.listCard}>
+                    <div className={styles.listTitle}>
+                        <strong>Đã hoàn thành</strong>
+                        <Tag color="green">{metrics.completed}</Tag>
                     </div>
+                    <p className={styles.muted}>
+                        Các buổi khám đã hoàn tất trong hệ thống.
+                    </p>
+                </article>
 
-                    <ClinicalPageState
-                        loading={loading}
-                        error={error}
-                        empty={history.length === 0}
-                        emptyTitle="Chưa có lịch sử"
-                        emptyDescription="Các lịch đã hoàn tất, đã hủy hoặc no-show sẽ hiển thị ở đây."
-                    >
-                        <Collapse
-                            bordered={false}
-                            items={history.map((appointment) => {
-                                const statusInfo =
-                                    getPatientStatusInfo(appointment);
-
-                                return {
-                                    key: appointment.id,
-                                    label: (
-                                        <div className={styles.listTitle}>
-                                            <strong>
-                                                {formatDateTime(
-                                                    appointment.startTime,
-                                                )}
-                                            </strong>
-
-                                            <StatusTag
-                                                value={appointment.status}
-                                            />
-                                        </div>
-                                    ),
-                                    children: (
-                                        <div>
-                                            <Alert
-                                                type={statusInfo.type}
-                                                showIcon
-                                                message={statusInfo.title}
-                                                description={
-                                                    statusInfo.description
-                                                }
-                                                style={{ marginBottom: 16 }}
-                                            />
-
-                                            <p className={styles.muted}>
-                                                Bác sĩ:{' '}
-                                                <b>
-                                                    {appointment.doctorName ||
-                                                        'Chưa rõ bác sĩ'}
-                                                </b>
-                                            </p>
-
-                                            <p className={styles.muted}>
-                                                Thời gian:{' '}
-                                                <b>
-                                                    {formatDateTime(
-                                                        appointment.startTime,
-                                                    )}
-                                                </b>{' '}
-                                                →{' '}
-                                                {formatTime(
-                                                    appointment.endTime,
-                                                )}
-                                            </p>
-
-                                            <p className={styles.muted}>
-                                                Ghi chú:{' '}
-                                                {appointment.diagnosis ||
-                                                    'Không có ghi chú.'}
-                                            </p>
-
-                                            {appointment.status ===
-                                                'COMPLETED' && (
-                                                    <Space wrap>
-                                                        <Link href="/dashboard/patient/medical-records">
-                                                            <Button type="primary">
-                                                                Xem kết quả khám
-                                                            </Button>
-                                                        </Link>
-
-                                                        <Link href="/dashboard/patient/prescriptions">
-                                                            <Button>
-                                                                Xem đơn thuốc
-                                                            </Button>
-                                                        </Link>
-                                                    </Space>
-                                                )}
-
-                                            {appointment.status ===
-                                                'CANCELLED' && (
-                                                    <Link href="/dashboard/patient/book-appointment">
-                                                        <Button type="primary">
-                                                            Đặt lịch mới
-                                                        </Button>
-                                                    </Link>
-                                                )}
-                                        </div>
-                                    ),
-                                };
-                            })}
-                        />
-                    </ClinicalPageState>
+                <article className={styles.listCard}>
+                    <div className={styles.listTitle}>
+                        <strong>Cần chú ý</strong>
+                        <Tag color="orange">{metrics.problem}</Tag>
+                    </div>
+                    <p className={styles.muted}>
+                        Lịch hẹn đã hủy hoặc ghi nhận không đến khám.
+                    </p>
                 </article>
             </section>
+
+            <section className={styles.portalPanel} style={{ marginTop: 24 }}>
+                <div className={styles.panelHeader}>
+                    <div>
+                        <span>Sắp tới</span>
+                        <h2>Lịch hẹn cần chuẩn bị</h2>
+                    </div>
+
+                    <Button icon={<ReloadOutlined />} onClick={loadAppointments}>
+                        Làm mới
+                    </Button>
+                </div>
+
+                <ClinicalPageState
+                    loading={loading}
+                    error={error}
+                    empty={upcomingAppointments.length === 0}
+                    emptyTitle="Chưa có lịch hẹn sắp tới"
+                    emptyDescription="Khi yêu cầu đặt lịch được duyệt, lịch hẹn sẽ xuất hiện tại đây."
+                    actionText="Đặt lịch khám"
+                    actionHref="/dashboard/patient/book-appointment"
+                >
+                    {upcomingAppointments.map((appointment) => (
+                        <article
+                            key={appointment.id}
+                            className={styles.listCard}
+                        >
+                            <div className={styles.listTitle}>
+                                <Space size={10} wrap>
+                                    <span
+                                        style={{
+                                            width: 36,
+                                            height: 36,
+                                            borderRadius: 999,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: getStatusColor(
+                                                appointment.status,
+                                            ),
+                                            background: '#f8fafc',
+                                            border: `1px solid ${getStatusColor(
+                                                appointment.status,
+                                            )}22`,
+                                        }}
+                                    >
+                                        {getStatusIcon(appointment.status)}
+                                    </span>
+
+                                    <strong>
+                                        {getAppointmentTitle(appointment)}
+                                    </strong>
+                                </Space>
+
+                                <StatusTag value={appointment.status} />
+                            </div>
+
+                            <p className={styles.muted}>
+                                Thời gian:{' '}
+                                <b>{getAppointmentTimeLabel(appointment)}</b>
+                            </p>
+
+                            <p className={styles.muted}>
+                                Địa điểm / hình thức:{' '}
+                                <b>{getAppointmentPlace(appointment)}</b>
+                            </p>
+
+                            <Space wrap>
+                                <Button
+                                    icon={<EyeOutlined />}
+                                    onClick={() => openDetail(appointment)}
+                                >
+                                    Xem chi tiết
+                                </Button>
+
+                                {appointment.meetingUrl && (
+                                    <Button
+                                        type="primary"
+                                        icon={<VideoCameraOutlined />}
+                                        href={appointment.meetingUrl}
+                                        target="_blank"
+                                    >
+                                        Vào phòng khám
+                                    </Button>
+                                )}
+                            </Space>
+                        </article>
+                    ))}
+                </ClinicalPageState>
+            </section>
+
+            <section className={styles.portalPanel} style={{ marginTop: 24 }}>
+                <div className={styles.panelHeader}>
+                    <div>
+                        <span>Bộ lọc</span>
+                        <h2>Tìm lịch hẹn</h2>
+                    </div>
+                </div>
+
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 220px auto',
+                        gap: 12,
+                        marginTop: 16,
+                    }}
+                >
+                    <Input
+                        allowClear
+                        prefix={<SearchOutlined />}
+                        placeholder="Tìm theo bác sĩ, chuyên khoa, triệu chứng hoặc loại khám"
+                        value={keyword}
+                        onChange={(event) => setKeyword(event.target.value)}
+                    />
+
+                    <Select
+                        value={status}
+                        options={statusOptions}
+                        onChange={setStatus}
+                    />
+
+                    <Button onClick={handleReset}>Đặt lại</Button>
+                </div>
+            </section>
+
+            <section className={styles.portalPanel} style={{ marginTop: 24 }}>
+                <div className={styles.panelHeader}>
+                    <div>
+                        <span>Danh sách</span>
+                        <h2>Lịch hẹn của tôi</h2>
+                    </div>
+
+                    <Tag color="blue">{filteredAppointments.length} lịch hẹn</Tag>
+                </div>
+
+                <ClinicalPageState
+                    loading={loading}
+                    error={error}
+                    empty={filteredAppointments.length === 0}
+                    emptyTitle="Không có lịch hẹn phù hợp"
+                    emptyDescription="Bạn có thể thay đổi bộ lọc hoặc gửi yêu cầu đặt lịch mới."
+                    actionText="Đặt lịch khám"
+                    actionHref="/dashboard/patient/book-appointment"
+                >
+                    {filteredAppointments.map((appointment) => (
+                        <article
+                            key={appointment.id}
+                            className={styles.listCard}
+                        >
+                            <div className={styles.listTitle}>
+                                <Space size={10} wrap>
+                                    <span
+                                        style={{
+                                            width: 36,
+                                            height: 36,
+                                            borderRadius: 999,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: getStatusColor(
+                                                appointment.status,
+                                            ),
+                                            background: '#f8fafc',
+                                            border: `1px solid ${getStatusColor(
+                                                appointment.status,
+                                            )}22`,
+                                        }}
+                                    >
+                                        {getStatusIcon(appointment.status)}
+                                    </span>
+
+                                    <strong>
+                                        {getAppointmentTitle(appointment)}
+                                    </strong>
+                                </Space>
+
+                                <StatusTag value={appointment.status} />
+                            </div>
+
+                            <p className={styles.muted}>
+                                Bác sĩ:{' '}
+                                <b>
+                                    {appointment.doctorName ||
+                                        'Chưa chỉ định bác sĩ'}
+                                </b>
+                            </p>
+
+                            <p className={styles.muted}>
+                                Thời gian:{' '}
+                                <b>{getAppointmentTimeLabel(appointment)}</b> ·
+                                Loại khám:{' '}
+                                <b>{appointment.type || 'OFFLINE'}</b>
+                            </p>
+
+                            <p className={styles.muted}>
+                                {getAppointmentDescription(appointment)}
+                            </p>
+
+                            {(appointment.cancellationReason ||
+                                appointment.cancelReason) && (
+                                    <p style={{ color: '#ef4444', lineHeight: 1.6 }}>
+                                        Lý do hủy:{' '}
+                                        {appointment.cancellationReason ||
+                                            appointment.cancelReason}
+                                    </p>
+                                )}
+
+                            <Space wrap>
+                                <Button
+                                    icon={<EyeOutlined />}
+                                    onClick={() => openDetail(appointment)}
+                                >
+                                    Xem chi tiết
+                                </Button>
+
+                                {appointment.medicalRecordId && (
+                                    <Link href="/dashboard/patient/medical-records">
+                                        <Button icon={<FileProtectOutlined />}>
+                                            Xem bệnh án
+                                        </Button>
+                                    </Link>
+                                )}
+
+                                {appointment.prescriptionId && (
+                                    <Link href="/dashboard/patient/prescriptions">
+                                        <Button icon={<MedicineBoxOutlined />}>
+                                            Xem đơn thuốc
+                                        </Button>
+                                    </Link>
+                                )}
+
+                                {appointment.meetingUrl &&
+                                    isUpcomingAppointment(appointment) && (
+                                        <Button
+                                            type="primary"
+                                            icon={<VideoCameraOutlined />}
+                                            href={appointment.meetingUrl}
+                                            target="_blank"
+                                        >
+                                            Vào phòng khám
+                                        </Button>
+                                    )}
+                            </Space>
+                        </article>
+                    ))}
+                </ClinicalPageState>
+            </section>
+
+            <Drawer
+                title="Chi tiết lịch hẹn"
+                open={openDetailDrawer}
+                width={620}
+                onClose={() => setOpenDetailDrawer(false)}
+                extra={
+                    selectedAppointment && (
+                        <Space>
+                            {selectedAppointment.meetingUrl &&
+                                isUpcomingAppointment(selectedAppointment) && (
+                                    <Button
+                                        type="primary"
+                                        icon={<VideoCameraOutlined />}
+                                        href={selectedAppointment.meetingUrl}
+                                        target="_blank"
+                                    >
+                                        Vào phòng khám
+                                    </Button>
+                                )}
+                        </Space>
+                    )
+                }
+            >
+                {selectedAppointment && (
+                    <Descriptions
+                        bordered
+                        column={1}
+                        size="small"
+                        title={getAppointmentTitle(selectedAppointment)}
+                    >
+                        <Descriptions.Item label="Trạng thái">
+                            <StatusTag value={selectedAppointment.status} />
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Chuyên khoa">
+                            {selectedAppointment.specialtyName || 'Chưa cập nhật'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Bác sĩ">
+                            {selectedAppointment.doctorName || 'Chưa chỉ định'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Email bác sĩ">
+                            {selectedAppointment.doctorEmail || 'Chưa cập nhật'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Thời gian bắt đầu">
+                            {getAppointmentTimeLabel(selectedAppointment)}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Thời gian kết thúc">
+                            {formatDateTime(getAppointmentEnd(selectedAppointment))}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Loại khám">
+                            {selectedAppointment.type || 'OFFLINE'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Địa điểm / hình thức">
+                            {getAppointmentPlace(selectedAppointment)}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Lý do khám">
+                            {selectedAppointment.reason || 'Chưa cập nhật'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Triệu chứng">
+                            {selectedAppointment.symptoms || 'Chưa cập nhật'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Ghi chú">
+                            {selectedAppointment.note || 'Không có ghi chú'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Lý do hủy">
+                            {selectedAppointment.cancellationReason ||
+                                selectedAppointment.cancelReason ||
+                                'Không có hoặc chưa bị hủy'}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Bệnh án">
+                            {selectedAppointment.medicalRecordId ? (
+                                <Link href="/dashboard/patient/medical-records">
+                                    Xem bệnh án liên quan
+                                </Link>
+                            ) : (
+                                'Chưa có bệnh án liên quan'
+                            )}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Đơn thuốc">
+                            {selectedAppointment.prescriptionId ? (
+                                <Link href="/dashboard/patient/prescriptions">
+                                    Xem đơn thuốc liên quan
+                                </Link>
+                            ) : (
+                                'Chưa có đơn thuốc liên quan'
+                            )}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Ngày tạo">
+                            {formatDateTime(selectedAppointment.createdAt)}
+                        </Descriptions.Item>
+
+                        <Descriptions.Item label="Cập nhật gần nhất">
+                            {formatDateTime(selectedAppointment.updatedAt)}
+                        </Descriptions.Item>
+                    </Descriptions>
+                )}
+            </Drawer>
         </PatientPortalFrame>
     );
 }

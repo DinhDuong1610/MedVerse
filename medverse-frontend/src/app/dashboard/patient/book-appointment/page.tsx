@@ -1,8 +1,19 @@
 'use client';
 
 import {
+    CalendarOutlined,
+    CheckCircleOutlined,
+    ClockCircleOutlined,
+    MedicineBoxOutlined,
+    ReloadOutlined,
+    SafetyCertificateOutlined,
+    SearchOutlined,
+    TeamOutlined,
+    UserOutlined,
+} from '@ant-design/icons';
+import {
+    Alert,
     Button,
-    Card,
     DatePicker,
     Form,
     Input,
@@ -13,6 +24,7 @@ import {
     message,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import ClinicalPageState from '../../_components/ClinicalPageState';
 import PatientPortalFrame from '../../_components/PatientPortalFrame';
@@ -43,6 +55,65 @@ type BookAppointmentFormValues = {
     symptoms?: string;
 };
 
+function formatDateTime(value?: string) {
+    if (!value) return 'Chưa ghi nhận';
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString('vi-VN');
+}
+
+function formatTime(value?: string) {
+    if (!value) return 'Chưa ghi nhận';
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function getDoctorName(doctor?: DirectoryDoctor) {
+    if (!doctor) return 'Chưa chọn bác sĩ';
+
+    return doctor.fullName || doctor.email || 'Bác sĩ';
+}
+
+function getSlotLabel(slot: WorkSlot) {
+    return `${formatDateTime(slot.startTime)} → ${formatTime(slot.endTime)}`;
+}
+
+function buildAppointmentPayload(
+    values: BookAppointmentFormValues,
+    slot?: WorkSlot,
+): AppointmentRequestCreatePayload {
+    const selectedDate = slot ? dayjs(slot.startTime) : values.desiredDate;
+    const selectedTime = slot ? dayjs(slot.startTime) : values.desiredTime;
+
+    const payload: AppointmentRequestCreatePayload = {
+        doctorId: values.doctorId,
+        specialtyId: values.specialtyId,
+        desiredDate: selectedDate.format('YYYY-MM-DD'),
+        desiredTime: selectedTime.format('HH:mm:ss'),
+        type: values.type,
+    };
+
+    if (values.symptoms?.trim()) {
+        payload.symptoms = values.symptoms.trim();
+    }
+
+    return payload;
+}
+
 export default function PatientBookAppointmentPage() {
     const { session, loading: authLoading } = useAuthSession();
 
@@ -58,8 +129,15 @@ export default function PatientBookAppointmentPage() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const selectedSpecialtyId = Form.useWatch('specialtyId', form);
     const selectedDoctorId = Form.useWatch('doctorId', form);
     const selectedSlotId = Form.useWatch('selectedSlotId', form);
+    const selectedType = Form.useWatch('type', form);
+
+    const selectedSpecialty = useMemo(
+        () => specialties.find((specialty) => specialty.id === selectedSpecialtyId),
+        [specialties, selectedSpecialtyId],
+    );
 
     const selectedDoctor = useMemo(
         () => doctors.find((doctor) => doctor.userId === selectedDoctorId),
@@ -82,8 +160,8 @@ export default function PatientBookAppointmentPage() {
                 getDirectoryDoctors(),
             ]);
 
-            setSpecialties(specialtyData);
-            setDoctors(doctorData);
+            setSpecialties(specialtyData || []);
+            setDoctors(doctorData || []);
         } catch (err) {
             setError(
                 err instanceof Error
@@ -104,7 +182,7 @@ export default function PatientBookAppointmentPage() {
 
             const slots = await getAvailableWorkSlots(doctorId);
 
-            const sortedSlots = [...slots].sort((a, b) =>
+            const sortedSlots = [...(slots || [])].sort((a, b) =>
                 String(a.startTime).localeCompare(String(b.startTime)),
             );
 
@@ -143,7 +221,7 @@ export default function PatientBookAppointmentPage() {
             setAvailableSlots([]);
 
             const doctorData = await getDirectoryDoctors({ specialtyId });
-            setDoctors(doctorData);
+            setDoctors(doctorData || []);
         } catch (err) {
             message.error(
                 err instanceof Error
@@ -181,22 +259,7 @@ export default function PatientBookAppointmentPage() {
                 (item) => item.id === values.selectedSlotId,
             );
 
-            const selectedDate = slot
-                ? dayjs(slot.startTime)
-                : values.desiredDate;
-
-            const selectedTime = slot
-                ? dayjs(slot.startTime)
-                : values.desiredTime;
-
-            const payload: AppointmentRequestCreatePayload = {
-                doctorId: values.doctorId,
-                specialtyId: values.specialtyId,
-                desiredDate: selectedDate.format('YYYY-MM-DD'),
-                desiredTime: selectedTime.format('HH:mm:ss'),
-                type: values.type,
-                symptoms: values.symptoms,
-            };
+            const payload = buildAppointmentPayload(values, slot);
 
             await createMyAppointmentRequest(payload);
 
@@ -207,6 +270,7 @@ export default function PatientBookAppointmentPage() {
                 type: 'OFFLINE',
                 desiredDate: dayjs().add(1, 'day'),
             });
+
             setAvailableSlots([]);
         } catch (err) {
             message.error(
@@ -218,6 +282,23 @@ export default function PatientBookAppointmentPage() {
             setSubmitting(false);
         }
     };
+
+    const handleReset = () => {
+        form.resetFields();
+        form.setFieldsValue({
+            type: 'OFFLINE',
+            desiredDate: dayjs().add(1, 'day'),
+        });
+        setAvailableSlots([]);
+    };
+
+    const metrics = useMemo(() => {
+        return {
+            specialtyCount: specialties.length,
+            doctorCount: doctors.length,
+            slotCount: availableSlots.length,
+        };
+    }, [specialties, doctors, availableSlots]);
 
     if (authLoading || !session) {
         return <ClinicalPageState loading>Loading</ClinicalPageState>;
@@ -234,47 +315,109 @@ export default function PatientBookAppointmentPage() {
             >
                 <section className={styles.hero}>
                     <div>
-                        <div className={styles.heroKicker}>Booking v2</div>
+                        <div className={styles.heroKicker}>Đặt lịch khám</div>
                         <h1 className={styles.heroTitle}>
-                            Chọn lịch khám theo slot có thật
+                            Chọn bác sĩ và khung giờ phù hợp
                         </h1>
                         <p className={styles.heroDescription}>
-                            Sau khi chọn bác sĩ, hệ thống sẽ hiển thị các slot
-                            còn trống. Bạn chọn slot phù hợp và gửi yêu cầu để
-                            lễ tân xác nhận.
+                            Bạn chọn chuyên khoa, bác sĩ và slot còn trống. Sau khi
+                            gửi yêu cầu, lễ tân sẽ xác nhận và tạo lịch hẹn chính
+                            thức cho bạn.
                         </p>
+
+                        <Space wrap style={{ marginTop: 20 }}>
+                            <Link href="/dashboard/patient/appointment-requests">
+                                <Button type="primary" icon={<CalendarOutlined />}>
+                                    Xem yêu cầu đã gửi
+                                </Button>
+                            </Link>
+
+                            <Link href="/dashboard/patient/appointments">
+                                <Button>Xem lịch hẹn</Button>
+                            </Link>
+                        </Space>
                     </div>
 
                     <article className={styles.heroCard}>
                         <span>Slot khả dụng</span>
-                        <strong>{availableSlots.length}</strong>
+                        <strong>{metrics.slotCount}</strong>
                         <p>
-                            Slot được lấy trực tiếp từ lịch làm việc của bác sĩ.
+                            Slot được lấy trực tiếp từ lịch làm việc của bác sĩ bạn
+                            đang chọn.
+                        </p>
+                    </article>
+                </section>
+
+                <section
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: 16,
+                        marginTop: 24,
+                    }}
+                >
+                    <article className={styles.listCard}>
+                        <div className={styles.listTitle}>
+                            <strong>Chuyên khoa</strong>
+                            <Tag color="blue">{metrics.specialtyCount}</Tag>
+                        </div>
+                        <p className={styles.muted}>
+                            Danh mục chuyên khoa có thể đặt lịch.
+                        </p>
+                    </article>
+
+                    <article className={styles.listCard}>
+                        <div className={styles.listTitle}>
+                            <strong>Bác sĩ phù hợp</strong>
+                            <Tag color="green">{metrics.doctorCount}</Tag>
+                        </div>
+                        <p className={styles.muted}>
+                            Danh sách bác sĩ theo chuyên khoa đang chọn.
+                        </p>
+                    </article>
+
+                    <article className={styles.listCard}>
+                        <div className={styles.listTitle}>
+                            <strong>Hình thức khám</strong>
+                            <Tag color={selectedType === 'ONLINE' ? 'purple' : 'cyan'}>
+                                {selectedType === 'ONLINE'
+                                    ? 'Trực tuyến'
+                                    : 'Trực tiếp'}
+                            </Tag>
+                        </div>
+                        <p className={styles.muted}>
+                            Bạn có thể chọn khám trực tiếp hoặc online nếu được hỗ trợ.
                         </p>
                     </article>
                 </section>
 
                 <section className={styles.contentGrid}>
-                    <Card className={styles.portalPanel} style={{ marginTop: 24 }}>
+                    <section className={styles.portalPanel} style={{ marginTop: 24 }}>
                         <div className={styles.panelHeader}>
                             <div>
-                                <span>Appointment request</span>
-                                <h2>Thông tin yêu cầu khám</h2>
+                                <span>Thông tin yêu cầu</span>
+                                <h2>Gửi yêu cầu đặt lịch</h2>
                                 <p>
-                                    Chọn chuyên khoa và bác sĩ trước, sau đó chọn
-                                    một slot còn trống.
+                                    Hãy chọn theo thứ tự: chuyên khoa, bác sĩ, slot
+                                    còn trống và mô tả ngắn triệu chứng.
                                 </p>
                             </div>
+
+                            <Button icon={<ReloadOutlined />} onClick={loadDirectory}>
+                                Làm mới
+                            </Button>
                         </div>
 
                         <Form
                             form={form}
                             layout="vertical"
                             onFinish={handleSubmit}
+                            requiredMark={false}
                             initialValues={{
                                 type: 'OFFLINE',
                                 desiredDate: dayjs().add(1, 'day'),
                             }}
+                            style={{ marginTop: 20 }}
                         >
                             <Form.Item
                                 label="Chuyên khoa"
@@ -287,8 +430,11 @@ export default function PatientBookAppointmentPage() {
                                 ]}
                             >
                                 <Select
+                                    showSearch
                                     loading={directoryLoading}
                                     placeholder="Chọn chuyên khoa"
+                                    optionFilterProp="label"
+                                    suffixIcon={<SearchOutlined />}
                                     onChange={handleSpecialtyChange}
                                     options={specialties.map((item) => ({
                                         value: item.id,
@@ -310,12 +456,17 @@ export default function PatientBookAppointmentPage() {
                                 <Select
                                     showSearch
                                     loading={directoryLoading}
-                                    placeholder="Chọn bác sĩ"
+                                    placeholder={
+                                        selectedSpecialtyId
+                                            ? 'Chọn bác sĩ'
+                                            : 'Chọn chuyên khoa trước'
+                                    }
                                     optionFilterProp="label"
+                                    disabled={!selectedSpecialtyId}
                                     onChange={handleDoctorChange}
                                     options={doctors.map((doctor) => ({
                                         value: doctor.userId,
-                                        label: `${doctor.fullName || doctor.email} · ${doctor.specialtyName ||
+                                        label: `${getDoctorName(doctor)} · ${doctor.specialtyName ||
                                             'Chưa rõ chuyên khoa'
                                             }`,
                                     }))}
@@ -344,11 +495,7 @@ export default function PatientBookAppointmentPage() {
                                     onChange={handleSlotChange}
                                     options={availableSlots.map((slot) => ({
                                         value: slot.id,
-                                        label: `${new Date(
-                                            slot.startTime,
-                                        ).toLocaleString('vi-VN')} → ${new Date(
-                                            slot.endTime,
-                                        ).toLocaleTimeString('vi-VN')}`,
+                                        label: getSlotLabel(slot),
                                     }))}
                                     notFoundContent={
                                         selectedDoctorId
@@ -358,41 +505,49 @@ export default function PatientBookAppointmentPage() {
                                 />
                             </Form.Item>
 
-                            <Form.Item
-                                label="Ngày mong muốn"
-                                name="desiredDate"
-                                rules={[
-                                    {
-                                        required: true,
-                                        message: 'Chọn ngày khám',
-                                    },
-                                ]}
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '1fr 1fr',
+                                    gap: 12,
+                                }}
                             >
-                                <DatePicker
-                                    style={{ width: '100%' }}
-                                    disabledDate={(current) =>
-                                        current
-                                            ? current <= dayjs().endOf('day')
-                                            : false
-                                    }
-                                />
-                            </Form.Item>
+                                <Form.Item
+                                    label="Ngày mong muốn"
+                                    name="desiredDate"
+                                    rules={[
+                                        {
+                                            required: true,
+                                            message: 'Chọn ngày khám',
+                                        },
+                                    ]}
+                                >
+                                    <DatePicker
+                                        style={{ width: '100%' }}
+                                        disabledDate={(current) =>
+                                            current
+                                                ? current <= dayjs().endOf('day')
+                                                : false
+                                        }
+                                    />
+                                </Form.Item>
 
-                            <Form.Item
-                                label="Giờ mong muốn"
-                                name="desiredTime"
-                                rules={[
-                                    {
-                                        required: true,
-                                        message: 'Chọn giờ khám',
-                                    },
-                                ]}
-                            >
-                                <TimePicker
-                                    format="HH:mm"
-                                    style={{ width: '100%' }}
-                                />
-                            </Form.Item>
+                                <Form.Item
+                                    label="Giờ mong muốn"
+                                    name="desiredTime"
+                                    rules={[
+                                        {
+                                            required: true,
+                                            message: 'Chọn giờ khám',
+                                        },
+                                    ]}
+                                >
+                                    <TimePicker
+                                        format="HH:mm"
+                                        style={{ width: '100%' }}
+                                    />
+                                </Form.Item>
+                            </div>
 
                             <Form.Item
                                 label="Hình thức khám"
@@ -418,98 +573,291 @@ export default function PatientBookAppointmentPage() {
                                 />
                             </Form.Item>
 
-                            <Form.Item label="Triệu chứng/Ghi chú" name="symptoms">
+                            <Form.Item label="Triệu chứng / Ghi chú" name="symptoms">
                                 <Input.TextArea
                                     rows={5}
                                     placeholder="Mô tả ngắn gọn triệu chứng, nhu cầu khám hoặc ghi chú cho lễ tân/bác sĩ."
                                 />
                             </Form.Item>
 
-                            <Button
-                                type="primary"
-                                htmlType="submit"
-                                loading={submitting}
-                                size="large"
-                                block
-                            >
-                                Gửi yêu cầu đặt lịch
-                            </Button>
-                        </Form>
-                    </Card>
+                            <Space wrap style={{ width: '100%' }}>
+                                <Button
+                                    type="primary"
+                                    htmlType="submit"
+                                    loading={submitting}
+                                    size="large"
+                                    icon={<CheckCircleOutlined />}
+                                >
+                                    Gửi yêu cầu đặt lịch
+                                </Button>
 
-                    <aside
-                        className={styles.portalPanel}
-                        style={{ marginTop: 24 }}
-                    >
+                                <Button size="large" onClick={handleReset}>
+                                    Đặt lại
+                                </Button>
+                            </Space>
+                        </Form>
+                    </section>
+
+                    <aside className={styles.portalPanel} style={{ marginTop: 24 }}>
                         <div className={styles.panelHeader}>
                             <div>
-                                <span>Selected slot</span>
-                                <h2>Slot đã chọn</h2>
+                                <span>Tóm tắt lựa chọn</span>
+                                <h2>Thông tin đang chọn</h2>
                                 <p>
-                                    Đây là thời gian mong muốn. Lễ tân sẽ xác
-                                    nhận và gán slot chính thức khi duyệt yêu cầu.
+                                    Kiểm tra lại chuyên khoa, bác sĩ và slot trước
+                                    khi gửi yêu cầu.
                                 </p>
                             </div>
                         </div>
 
-                        {selectedDoctor && (
+                        <Space
+                            direction="vertical"
+                            size={16}
+                            style={{ width: '100%', marginTop: 20 }}
+                        >
                             <article className={styles.listCard}>
                                 <div className={styles.listTitle}>
-                                    <strong>
-                                        {selectedDoctor.fullName ||
-                                            selectedDoctor.email}
-                                    </strong>
-                                    <Tag color="cyan">
-                                        {selectedDoctor.specialtyName ||
-                                            'Bác sĩ'}
+                                    <Space>
+                                        <MedicineBoxOutlined />
+                                        <strong>Chuyên khoa</strong>
+                                    </Space>
+
+                                    <Tag color={selectedSpecialty ? 'blue' : 'default'}>
+                                        {selectedSpecialty ? 'Đã chọn' : 'Chưa chọn'}
                                     </Tag>
                                 </div>
 
                                 <p className={styles.muted}>
-                                    Bằng cấp:{' '}
-                                    {selectedDoctor.degree || 'Chưa cập nhật'}
-                                </p>
-
-                                <p className={styles.muted}>
-                                    Kinh nghiệm:{' '}
-                                    {selectedDoctor.experienceYears
-                                        ? `${selectedDoctor.experienceYears} năm`
-                                        : 'Chưa cập nhật'}
+                                    {selectedSpecialty
+                                        ? `${selectedSpecialty.name} (${selectedSpecialty.code})`
+                                        : 'Hãy chọn chuyên khoa trước để lọc bác sĩ phù hợp.'}
                                 </p>
                             </article>
-                        )}
 
-                        {selectedSlot ? (
                             <article className={styles.listCard}>
                                 <div className={styles.listTitle}>
-                                    <strong>
-                                        {new Date(
-                                            selectedSlot.startTime,
-                                        ).toLocaleString('vi-VN')}
-                                    </strong>
-                                    <StatusTag value={selectedSlot.status} />
+                                    <Space>
+                                        <UserOutlined />
+                                        <strong>Bác sĩ</strong>
+                                    </Space>
+
+                                    <Tag color={selectedDoctor ? 'green' : 'default'}>
+                                        {selectedDoctor ? 'Đã chọn' : 'Chưa chọn'}
+                                    </Tag>
                                 </div>
 
-                                <p className={styles.muted}>
-                                    Kết thúc:{' '}
-                                    {new Date(
-                                        selectedSlot.endTime,
-                                    ).toLocaleString('vi-VN')}
-                                </p>
-                            </article>
-                        ) : (
-                            <p className={styles.muted}>
-                                Bạn chưa chọn slot. Hãy chọn bác sĩ để xem các
-                                khung giờ còn trống.
-                            </p>
-                        )}
+                                {selectedDoctor ? (
+                                    <>
+                                        <p className={styles.muted}>
+                                            <b>{getDoctorName(selectedDoctor)}</b>
+                                        </p>
 
-                        <Space wrap style={{ marginTop: 12 }}>
-                            <Tag color="blue">Patient request</Tag>
-                            <Tag color="gold">Receptionist confirms</Tag>
-                            <Tag color="green">Appointment created</Tag>
+                                        <p className={styles.muted}>
+                                            Chuyên khoa:{' '}
+                                            {selectedDoctor.specialtyName ||
+                                                'Chưa cập nhật'}
+                                        </p>
+
+                                        <p className={styles.muted}>
+                                            Bằng cấp:{' '}
+                                            {selectedDoctor.degree ||
+                                                'Chưa cập nhật'}
+                                        </p>
+
+                                        <p className={styles.muted}>
+                                            Kinh nghiệm:{' '}
+                                            {selectedDoctor.experienceYears
+                                                ? `${selectedDoctor.experienceYears} năm`
+                                                : 'Chưa cập nhật'}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className={styles.muted}>
+                                        Chọn bác sĩ để hệ thống tải các slot khám
+                                        còn trống.
+                                    </p>
+                                )}
+                            </article>
+
+                            <article className={styles.listCard}>
+                                <div className={styles.listTitle}>
+                                    <Space>
+                                        <ClockCircleOutlined />
+                                        <strong>Slot khám</strong>
+                                    </Space>
+
+                                    {selectedSlot ? (
+                                        <StatusTag value={selectedSlot.status} />
+                                    ) : (
+                                        <Tag>Chưa chọn</Tag>
+                                    )}
+                                </div>
+
+                                {selectedSlot ? (
+                                    <>
+                                        <p className={styles.muted}>
+                                            Bắt đầu:{' '}
+                                            <b>{formatDateTime(selectedSlot.startTime)}</b>
+                                        </p>
+
+                                        <p className={styles.muted}>
+                                            Kết thúc:{' '}
+                                            <b>{formatDateTime(selectedSlot.endTime)}</b>
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className={styles.muted}>
+                                        Sau khi chọn bác sĩ, hãy chọn một slot còn
+                                        trống để gửi yêu cầu.
+                                    </p>
+                                )}
+                            </article>
+
+                            <Alert
+                                type="info"
+                                showIcon
+                                message="Yêu cầu chưa phải lịch hẹn chính thức"
+                                description="Sau khi bạn gửi yêu cầu, lễ tân sẽ xác nhận lại slot và tạo lịch hẹn chính thức nếu phù hợp."
+                            />
                         </Space>
                     </aside>
+                </section>
+
+                <section className={styles.portalPanel} style={{ marginTop: 24 }}>
+                    <div className={styles.panelHeader}>
+                        <div>
+                            <span>Slot khả dụng</span>
+                            <h2>Các khung giờ bác sĩ còn trống</h2>
+                        </div>
+
+                        {selectedDoctorId && (
+                            <Button
+                                icon={<ReloadOutlined />}
+                                loading={slotLoading}
+                                onClick={() => loadAvailableSlots(selectedDoctorId)}
+                            >
+                                Tải lại slot
+                            </Button>
+                        )}
+                    </div>
+
+                    <ClinicalPageState
+                        loading={slotLoading}
+                        error={null}
+                        empty={Boolean(selectedDoctorId) && availableSlots.length === 0}
+                        emptyTitle="Bác sĩ chưa có slot khả dụng"
+                        emptyDescription="Bạn có thể chọn bác sĩ khác hoặc quay lại sau."
+                    >
+                        {!selectedDoctorId ? (
+                            <Alert
+                                type="info"
+                                showIcon
+                                style={{ marginTop: 20 }}
+                                message="Chưa chọn bác sĩ"
+                                description="Hãy chọn chuyên khoa và bác sĩ để xem danh sách slot còn trống."
+                            />
+                        ) : (
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns:
+                                        'repeat(auto-fit, minmax(240px, 1fr))',
+                                    gap: 12,
+                                    marginTop: 20,
+                                }}
+                            >
+                                {availableSlots.map((slot) => {
+                                    const active = selectedSlotId === slot.id;
+
+                                    return (
+                                        <button
+                                            key={slot.id}
+                                            type="button"
+                                            onClick={() => handleSlotChange(slot.id)}
+                                            className={styles.listCard}
+                                            style={{
+                                                textAlign: 'left',
+                                                cursor: 'pointer',
+                                                border: active
+                                                    ? '1px solid #2563eb'
+                                                    : undefined,
+                                                background: active
+                                                    ? '#eff6ff'
+                                                    : undefined,
+                                            }}
+                                        >
+                                            <div className={styles.listTitle}>
+                                                <strong>
+                                                    {formatDateTime(slot.startTime)}
+                                                </strong>
+                                                <StatusTag value={slot.status} />
+                                            </div>
+
+                                            <p className={styles.muted}>
+                                                Kết thúc:{' '}
+                                                <b>{formatTime(slot.endTime)}</b>
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </ClinicalPageState>
+                </section>
+
+                <section className={styles.portalPanel} style={{ marginTop: 24 }}>
+                    <div className={styles.panelHeader}>
+                        <div>
+                            <span>Quy trình</span>
+                            <h2>Sau khi gửi yêu cầu sẽ thế nào?</h2>
+                        </div>
+                    </div>
+
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                            gap: 16,
+                            marginTop: 20,
+                        }}
+                    >
+                        <article className={styles.listCard}>
+                            <div className={styles.listTitle}>
+                                <Space>
+                                    <CalendarOutlined />
+                                    <strong>1. Gửi yêu cầu</strong>
+                                </Space>
+                            </div>
+                            <p className={styles.muted}>
+                                Bạn chọn chuyên khoa, bác sĩ, slot và mô tả triệu
+                                chứng.
+                            </p>
+                        </article>
+
+                        <article className={styles.listCard}>
+                            <div className={styles.listTitle}>
+                                <Space>
+                                    <TeamOutlined />
+                                    <strong>2. Lễ tân xác nhận</strong>
+                                </Space>
+                            </div>
+                            <p className={styles.muted}>
+                                Lễ tân kiểm tra slot, bác sĩ và phản hồi trạng thái.
+                            </p>
+                        </article>
+
+                        <article className={styles.listCard}>
+                            <div className={styles.listTitle}>
+                                <Space>
+                                    <SafetyCertificateOutlined />
+                                    <strong>3. Tạo lịch hẹn</strong>
+                                </Space>
+                            </div>
+                            <p className={styles.muted}>
+                                Nếu được duyệt, hệ thống sẽ tạo lịch hẹn chính thức.
+                            </p>
+                        </article>
+                    </div>
                 </section>
             </ClinicalPageState>
         </PatientPortalFrame>

@@ -63,11 +63,6 @@ const PATIENT_NAV_ITEMS: PatientNavItem[] = [
         icon: <MedicineBoxOutlined />,
         anyPermissions: ['PRESCRIPTION:READ_OWN'],
     },
-    {
-        label: 'Thông báo',
-        href: '/dashboard/notifications',
-        icon: <BellOutlined />,
-    },
 ];
 
 type PatientPortalFrameProps = {
