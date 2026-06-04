@@ -256,7 +256,7 @@
     p {
         margin-top: 14px;
         color: #6a7c7a;
-        font-size: 30px;
+        font-size: 18px;
         line-height: 1.55;
         font-weight: 650;
     }
@@ -303,7 +303,7 @@
 
     :global(.ant-statistic-content-value) {
         color: #10201f;
-        font-size: 48px !important;
+        font-size: 30px !important;
         font-weight: 950 !important;
         line-height: 1 !important;
         letter-spacing: -0.06em;
@@ -312,7 +312,7 @@
     :global(.ant-statistic-content-value-int),
     :global(.ant-statistic-content-value-decimal) {
         color: #10201f;
-        font-size: 48px !important;
+        font-size: 30px !important;
         font-weight: 950 !important;
         line-height: 1 !important;
     }
