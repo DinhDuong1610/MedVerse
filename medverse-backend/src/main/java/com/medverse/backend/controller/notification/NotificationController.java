@@ -26,47 +26,47 @@ import java.util.UUID;
 @SecurityRequirement(name = "bearerAuth")
 public class NotificationController {
 
-    private final NotificationService notificationService;
+        private final NotificationService notificationService;
 
-    @GetMapping("/me")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AppResponse<Page<NotificationDto>>> getMyNotifications(
-            @AuthenticationPrincipal User currentUser,
-            @ParameterObject @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        Page<NotificationDto> page = notificationService.getMyNotifications(currentUser.getId(), pageable);
+        @GetMapping("/me")
+        @PreAuthorize("isAuthenticated()")
+        public ResponseEntity<AppResponse<Page<NotificationDto>>> getMyNotifications(
+                        @AuthenticationPrincipal User currentUser,
+                        @ParameterObject @PageableDefault(size = 20) Pageable pageable) {
+                Page<NotificationDto> page = notificationService.getMyNotifications(currentUser.getId(), pageable);
 
-        return ResponseEntity.ok(
-                new AppResponse<>("SUCCESS", "Notifications retrieved.", page, null));
-    }
+                return ResponseEntity.ok(
+                                new AppResponse<>("SUCCESS", "Notifications retrieved.", page, null));
+        }
 
-    @GetMapping("/unread-count")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AppResponse<Map<String, Long>>> countUnread(
-            @AuthenticationPrincipal User currentUser) {
-        long count = notificationService.countUnread(currentUser.getId());
+        @GetMapping("/unread-count")
+        @PreAuthorize("isAuthenticated()")
+        public ResponseEntity<AppResponse<Map<String, Long>>> countUnread(
+                        @AuthenticationPrincipal User currentUser) {
+                long count = notificationService.countUnread(currentUser.getId());
 
-        return ResponseEntity.ok(
-                new AppResponse<>("SUCCESS", "Unread count retrieved.", Map.of("count", count), null));
-    }
+                return ResponseEntity.ok(
+                                new AppResponse<>("SUCCESS", "Unread count retrieved.", Map.of("count", count), null));
+        }
 
-    @PatchMapping("/{id}/read")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AppResponse<NotificationDto>> markAsRead(
-            @AuthenticationPrincipal User currentUser,
-            @PathVariable UUID id) {
-        NotificationDto dto = notificationService.markAsRead(id, currentUser.getId());
+        @PatchMapping("/{id}/read")
+        @PreAuthorize("isAuthenticated()")
+        public ResponseEntity<AppResponse<NotificationDto>> markAsRead(
+                        @AuthenticationPrincipal User currentUser,
+                        @PathVariable UUID id) {
+                NotificationDto dto = notificationService.markAsRead(id, currentUser.getId());
 
-        return ResponseEntity.ok(
-                new AppResponse<>("SUCCESS", "Notification marked as read.", dto, null));
-    }
+                return ResponseEntity.ok(
+                                new AppResponse<>("SUCCESS", "Notification marked as read.", dto, null));
+        }
 
-    @PatchMapping("/read-all")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AppResponse<Void>> markAllAsRead(
-            @AuthenticationPrincipal User currentUser) {
-        notificationService.markAllAsRead(currentUser.getId());
+        @PatchMapping("/read-all")
+        @PreAuthorize("isAuthenticated()")
+        public ResponseEntity<AppResponse<Void>> markAllAsRead(
+                        @AuthenticationPrincipal User currentUser) {
+                notificationService.markAllAsRead(currentUser.getId());
 
-        return ResponseEntity.ok(
-                new AppResponse<>("SUCCESS", "All notifications marked as read.", null, null));
-    }
+                return ResponseEntity.ok(
+                                new AppResponse<>("SUCCESS", "All notifications marked as read.", null, null));
+        }
 }
